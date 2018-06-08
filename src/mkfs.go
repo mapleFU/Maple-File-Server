@@ -8,6 +8,9 @@ func initfs()  {
 	
 }
 
-func generatefs()  {
+func GenerateFs()  {
+	// 基本的信息
+	
+
 
 }

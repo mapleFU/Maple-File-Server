@@ -27,4 +27,5 @@ func main()  {
 
 	fmt.Println(unsafe.Sizeof(S1{}), unsafe.Sizeof(S2{}), unsafe.Sizeof(S3{}))
 
+	fmt.Println(src.IPB, src.MAX_FILE, src.DIRENT_SIZE)
 }

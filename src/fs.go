@@ -1,7 +1,3 @@
-package src
-
-import "unsafe"
-
 /**
 // On-disk file system format.
 // Both the kernel and user programs use this header file.
@@ -14,6 +10,9 @@ import "unsafe"
 #define BSIZE 512  // block size
 */
 
+package src
+
+import "unsafe"
 
 /**
 // File system super block
@@ -81,7 +80,7 @@ each i-node has an i-number
 const (
 	// 直接指针的数目
 	NDIRECT = 12
-	// 非直接指令的数量
+	// 多级索引的最大上限。因为这里只有一个块作为二级索引
 	NINDIRECT = BLOCK_SIZE / unsafe.Sizeof(uint32(0))
 	// 最多的文件指针？
 	MAX_FILE = NDIRECT + NINDIRECT
@@ -95,13 +94,12 @@ const (
 )
 
 type dinode struct {
-	fileType uint8	// 文件的类型
-	nlink uint8		// link 链接的数量
+	fileType uint16	// 文件的类型
+	nlink uint16		// link 链接的数量
 
-	major, minor uint8
+	major, minor uint16	// 对应的major minor, 我这里好像没啥用
 	size uint32		// size of file
-	addrs [NDIRECT + 1]uint8	// 直接指向的数据块
-	// 多级数据块 -- > 等会儿直接用树组织吧
+	addrs [NDIRECT + 1]uint32	// 直接指向的数据块，最后一个+1对应的是二级索引
 
 }
 
@@ -110,12 +108,12 @@ type dinode struct {
 const IPB = BLOCK_SIZE / unsafe.Sizeof(dinode{})
 
 // Block containing inode i
-// 给出 index, 描述出index block对应的位置
-func IBLOCK(i uint8) uint8 {
-	return i / uint8(IPB) + 2
+// 给出 index, 描述出index block对应的位置，SUPERBLOCK == 1
+func IBLOCK(i uint16) uint16 {
+	return i / uint16(IPB) + 2
 }
 
-// means bits per block?
+// Bitmap bits per block
 const BPB  = BLOCK_SIZE * 8
 
 /**
@@ -124,9 +122,10 @@ ninodes means ninode index
 b means bios (in )
  */
  // 这个应该表示的是bitmap block 对应的位置, B表示的是第几个块, 对应的是哪个位置
-func BBLOCK(b, ninodes uint8) uint8 {
+func BBLOCK(b uint16, ninodes uint8) uint8 {
+
 	// 本来应该是 + 2, 但是实际上这里至少有一个block会被INODES TABLE占用，所以 + 3
-	return uint8(b / BPB + ninodes / uint8(IPB) + 3)
+	return uint8(uint8(b / BPB) + ninodes / uint8(IPB) + 3)
 }
 
 /**
@@ -143,12 +142,24 @@ struct dirent {
 const DIRSIZ = 14
  
 type dirent struct {
-	inum uint8
+	inum uint16
 	// 是不是到时候改回rune比较好
 	name [DIRSIZ]byte
 }
 
+const DIRENT_SIZE = unsafe.Sizeof(dirent{})
+
 // 对目录进行链接
 func dirlink(dir *dirent, bytes []byte, inode *inode)  {
 	unimpletedError()
+}
+
+// 对目录取消链接
+func dirunlink(dirent *dirent, name []byte, pinode *inode)  {
+	unimpletedError()
+}
+
+func bmap(inode *inode, bn uint32) uint32 {
+	unimpletedError()
+	return uint32(1)
 }
