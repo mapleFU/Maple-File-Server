@@ -128,7 +128,28 @@ type dirent struct {
 
 
 
-### Buffer Cache 层
+### Block Buffer 层
+
+1. 同步对磁盘的访问
+2. 缓存常用的块，提升性能
+
+主要接口：`bread` `bwrite` 从磁盘中写入缓冲区／把缓冲区一块写到磁盘上正确位置。处理完后要用`brelse`
+
+块缓冲利用`LRU`替换
+
+`binit` 从`buf`取出
+
+`binit` 从静态数组`buf` 构建有`NBUF`元素的 `linkedlist` 通过链表访问缓冲区
+
+有 `VALID` `DIRTY` `BUSY` 三种状态
+
+`bget`获得指定扇区缓冲 从磁盘中读取可能会调用`iderw` 扫描缓冲区链表，寻找到对应的，不处于`BUSY` 状态则返回（反之阻塞）
+
+`brelse`  将缓冲区移动到链表头部，清除`B_BUSY` 
+
+
+
+### 数据结构
 
 同时对于内存中的`inode` 有这样的描述
 
@@ -144,3 +165,24 @@ type inode struct {
 }
 ```
 
+
+
+### 块分配层
+
+根据空闲块位图，分配新的块。
+
+`balloc` 分配新的块 `bfree` 释放。 先用`readsb`从磁盘读 `superblock`, `balloc`寻找对应的块，同时清空对应的位。
+
+### inode 层
+
+`inode`是 `dinode` 的记录 `ialloc`  申请新的i节点。 `iget` 会遍历 `inode`缓存寻找
+
+`bmap` 会返回对应序号 `inode` 的内容
+
+### 目录层
+
+目录的 `inode`类型是 `T_DIR`, `dirlookup` `dirlink` `dirunlink` 操作目录
+
+### 文件描述符／系统调用层
+
+`sys_link` `sys_unlink` `nameiparent` `dirlookup`

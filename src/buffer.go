@@ -23,6 +23,7 @@ type buffer struct {
 	// dev, sector 是对应的设备、扇区管理
 	dev uint8		// 设备
 	sector uint8	// 扇区？
+
 	prev, next, qnext *buffer
 	// 对应的数据，有着固定的大小
 	data [BUFFER_SIZE]byte

@@ -12,7 +12,12 @@
 
 package src
 
-import "unsafe"
+import (
+	"unsafe"
+	"log"
+	"encoding/binary"
+	"bytes"
+)
 
 /**
 // File system super block
@@ -28,13 +33,31 @@ const ROOT_INODE_NUM = 1
 const BLOCK_SIZE = 512
 
 type superblock struct {
-	size uint32		// size of blocks
-	nblocks uint32	// number of datablocks
-	ninodes uint32	// number of inodes
+	Size uint32		// size of blocks
+	Nblocks uint32	// number of datablocks
+	Ninodes uint32	// number of inodes
 }
 
-func readsb(superblock *superblock) {
-	panic("not implemented.")
+// 初始化传入的 SUPER BLOCK 指针
+func readsb(unInitSptr *superblock) {
+
+	pos, err := fsfd.Seek(BLOCK_SIZE * 1, 0)
+	if err != nil {
+		panic(err)
+	}
+	if pos != BLOCK_SIZE * 1 {
+		log.Fatalf("Move to %d in readsb", pos)
+	}
+	datas := make([]byte, BLOCK_SIZE)
+	readSize, err := fsfd.Read(datas)
+	if readSize != BLOCK_SIZE || err != nil {
+		log.Fatalf("Only read %d\n", readSize)
+	}
+	buf := bytes.NewBuffer(datas[:unsafe.Sizeof(superblock{})])
+	err = binary.Read(buf, binary.LittleEndian, unInitSptr)
+	if err != nil {
+		panic(err)
+	}
 }
 /**
 xv6 blocks:
@@ -163,3 +186,4 @@ func bmap(inode *inode, bn uint32) uint32 {
 	unimpletedError()
 	return uint32(1)
 }
+
