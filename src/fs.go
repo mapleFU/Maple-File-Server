@@ -17,6 +17,8 @@ import (
 	"log"
 	"encoding/binary"
 	"bytes"
+	"fmt"
+	"github.com/sirupsen/logrus"
 )
 
 /**
@@ -29,7 +31,7 @@ struct superblock {
  */
 
  // 操作系统块的常量
-const ROOT_INODE_NUM = 1
+const ROOT_INODE_NUM uint32 = 1
 const BLOCK_SIZE = 512
 
 type superblock struct {
@@ -41,15 +43,8 @@ type superblock struct {
 // 初始化传入的 SUPER BLOCK 指针
 func readsb(unInitSptr *superblock) {
 
-	pos, err := fsfd.Seek(BLOCK_SIZE * 1, 0)
-	if err != nil {
-		panic(err)
-	}
-	if pos != BLOCK_SIZE * 1 {
-		log.Fatalf("Move to %d in readsb", pos)
-	}
 	datas := make([]byte, BLOCK_SIZE)
-	readSize, err := fsfd.Read(datas)
+	readSize, err := fsfd.ReadAt(datas, BLOCK_SIZE * 1)
 	if readSize != BLOCK_SIZE || err != nil {
 		log.Fatalf("Only read %d\n", readSize)
 	}
@@ -110,30 +105,30 @@ const (
 )
 
 const (
-	FREE = iota
-	FILE
-	DIRECT
+	FILETYPE_FREE = iota
+	FILETYPE_FILE
+	FILETYPE_DIRECT
 
 )
 
-type dinode struct {
-	fileType uint16	// 文件的类型
-	nlink uint16		// link 链接的数量
+type Dinode struct {
+	FileType uint16	// 文件的类型
+	Nlink uint16		// link 链接的数量
 
-	major, minor uint16	// 对应的major minor, 我这里好像没啥用
-	size uint32		// size of file
-	addrs [NDIRECT + 1]uint32	// 直接指向的数据块，最后一个+1对应的是二级索引
+	Major, Minor uint16	// 对应的major minor, 我这里好像没啥用...好吧我他妈把MAJOR当成LINK链接好了,MINOR当成-s link好了
+	Size uint32		// size of file
+	Addrs [NDIRECT + 1]uint32	// 直接指向的数据块，最后一个+1对应的是二级索引
 
 }
 
 // TODO:弄出一个实际的块...? 这个安全吗？
 // 一个BLOCK能存储的INODE的数目
-const IPB = BLOCK_SIZE / unsafe.Sizeof(dinode{})
+const IPB = BLOCK_SIZE / unsafe.Sizeof(Dinode{})
 
 // Block containing inode i
 // 给出 index, 描述出index block对应的位置，SUPERBLOCK == 1
-func IBLOCK(i uint16) uint16 {
-	return i / uint16(IPB) + 2
+func IBLOCK(i uint32) uint32 {
+	return i / uint32(IPB) + 2
 }
 
 // Bitmap bits per block
@@ -151,6 +146,7 @@ func BBLOCK(b uint16, ninodes uint8) uint8 {
 	return uint8(uint8(b / BPB) + ninodes / uint8(IPB) + 3)
 }
 
+
 /**
 XV6 目录
 // Directory is a file containing a sequence of dirent structures.
@@ -163,7 +159,9 @@ struct dirent {
  */
 
 const DIRSIZ = 14
- 
+const MAX_UINT16 = 65535	// 表示删除的记录
+
+// 存储目录项的条目
 type dirent struct {
 	inum uint16
 	// 是不是到时候改回rune比较好
@@ -172,14 +170,73 @@ type dirent struct {
 
 const DIRENT_SIZE = unsafe.Sizeof(dirent{})
 
-// 对目录进行链接
-func dirlink(dir *dirent, bytes []byte, inode *inode)  {
+// 创建目录
+func mkdir(name []byte) *inode {
+	// TODO: 在本目录下做好查找
+	newInode := ialloc()
+	newInode.dinodeData.FileType = FILETYPE_DIRECT
+
+	return newInode
+}
+
+// remove dir
+func rmdir(name []byte) *dirent {
 	unimpletedError()
+	return nil
+}
+
+// search for dir
+func search(fileURI []byte)  {
+	
+}
+
+// 对目录进行链接
+func dirlink(dir *inode, destName []byte, inum uint16)  {
+	if dir.dinodeData.FileType != FILETYPE_DIRECT {
+		log.Fatalf("Type of file error, inode is not dir in dirlink")
+	}
+	if len(destName) >= DIRSIZ {
+		log.Fatalf("Too long file name!")
+	}
+	var name [DIRSIZ]byte
+	copy(name[:], destName)
+	iappend(dir, dirent{inum, name})
 }
 
 // 对目录取消链接
-func dirunlink(dirent *dirent, name []byte, pinode *inode)  {
+func dirunlink(dir *inode, destName []byte)  {
+	if dir.dinodeData.FileType != FILETYPE_DIRECT {
+		log.Fatalf("Type of file error, inode is not dir in dirunlink")
+	}
 	unimpletedError()
+}
+
+func checkDir(node *inode) {
+	if node.dinodeData.FileType != FILETYPE_DIRECT {
+		log.Fatal("Type is not DIR!")
+	}
+}
+
+func walkdir(dir *inode) {
+	checkDir(dir)
+	var readdir dirent
+	STRUCT_SIZE := int(unsafe.Sizeof(readdir))
+	for i := 0; i < int(dir.dinodeData.Nlink); i++ {
+		block := readBlockDIO(dir.dinodeData.Addrs[i])
+		logrus.Debugf("read block %d", dir.dinodeData.Addrs[i])
+
+		for j := 0;j * STRUCT_SIZE < BLOCK_SIZE && i * BLOCK_SIZE + j * int(STRUCT_SIZE) < int(dir.dinodeData.Size); j++{
+
+			buf := bytes.NewBuffer(block[j * STRUCT_SIZE: (j + 1) * STRUCT_SIZE])
+			binary.Read(buf, binary.LittleEndian, &readdir)
+			fmt.Println(readdir)
+		}
+	}
+}
+
+func dirlookup (dir *inode, destName []byte) {
+	checkDir(dir)
+
 }
 
 func bmap(inode *inode, bn uint32) uint32 {

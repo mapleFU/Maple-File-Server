@@ -2,24 +2,29 @@ package src
 
 import (
 	"os"
-	"log"
-	"encoding/binary"
 	"fmt"
+	"encoding/binary"
 	"bytes"
-
 	"unsafe"
+	log "github.com/sirupsen/logrus"
 )
 
 /**
 生成fs 的包
  */
-
+const MAX_UINT32  = 4294967295
 const FS_IMG_FILE = "maple-xv6.dmg"
 
 var fsfd *os.File
 
-func initfs()  {
-	
+func init()  {
+	var err error
+	// 基本的信息
+	fsfd, err = os.OpenFile(FS_IMG_FILE, os.O_RDWR | os.O_CREATE | os.O_TRUNC,
+		0666)
+	if err != nil {
+		log.Fatalln("cannot open the file")
+	}
 }
 
 func xuint16(x uint16) uint16 {
@@ -43,14 +48,18 @@ func xuint32(x uint32) uint32 {
 }
 
 const (
+	// 总共大小
 	SIZE = 1024
+	// INODES 的数量
 	NINODES = 200
+	// BLOCKS 的数量
 	NBLOCKS = 995
 )
 
-func writeFS(fs *os.File, buf []byte, sec uint32)  {
+
+func writeFS(buf []byte, sec uint32)  {
 	// 直接写入 block
-	off, err := fs.Seek(int64(BLOCK_SIZE) * int64(sec) , 0)
+	off, err := fsfd.Seek(int64(BLOCK_SIZE) * int64(sec) , 0)
 	if err != nil {
 		panic(err)
 	}
@@ -67,21 +76,18 @@ func writeFS(fs *os.File, buf []byte, sec uint32)  {
 		buf = writeBuf
 	}
 
-	outsize, err := fs.WriteAt(buf, off)
+	outsize, err := fsfd.WriteAt(buf, off)
 	// || outsize != BLOCK_SIZE ban
 	if err != nil  {
 		log.Fatalf("Only print %d\n", outsize)
 	}
 }
 
+const BITMAP_BLOCK_NUM uint32 = SIZE / (BLOCK_SIZE * 8) + 1
+var usedblocks uint32
+
 func GenerateFs()  {
-	var err error
-	// 基本的信息
-	fsfd, err = os.OpenFile(FS_IMG_FILE, os.O_RDWR | os.O_CREATE | os.O_TRUNC,
-		0666)
-	if err != nil {
-		log.Fatalln("cannot open the file")
-	}
+
 	defer fsfd.Close()
 
 	sb := superblock{xuint32(1024), xuint32(200), xuint32(995)}
@@ -89,7 +95,8 @@ func GenerateFs()  {
 	fmt.Println(sb)
 
 	var bitblocks uint32 = SIZE / (BLOCK_SIZE * 8) + 1
-	usedblocks := NINODES / uint32(IPB) + 3 + bitblocks
+	usedblocks = NINODES / uint32(IPB) + 3 + bitblocks
+
 	freeblock := usedblocks
 
 	fmt.Printf("used %d (bit %d ninode %d) free %d total %d\n", usedblocks,
@@ -101,12 +108,12 @@ func GenerateFs()  {
 
 	for i := uint32(0); i < NBLOCKS + usedblocks; i++ {
 		// init physics block
-		writeFS(fsfd, emptyBlock, i)
+		writeFS(emptyBlock, i)
 	}
 
 	// init superblock
 	buf := bytes.Buffer{}
-	err = binary.Write(&buf, binary.LittleEndian, sb)
+	err := binary.Write(&buf, binary.LittleEndian, sb)
 	if err != nil {
 		panic(err)
 	}
@@ -116,26 +123,65 @@ func GenerateFs()  {
 	if err != nil {
 		panic("bytes write error")
 	}
-	writeFS(fsfd, buf.Bytes(), 1)
+	writeFS(buf.Bytes(), 1)
 
+	// test sb
 	var sb2 superblock
 	readsb(&sb2)
 	fmt.Println(sb2)
-	/** Unmarshal
-	var sb2 superblock
-	err = binary.Read(buf, binary.LittleEndian, &sb2)
-	if err != nil {
-		panic(err)
+	// write bitmap --> 反正都它妈是0 --> 不对，前面都是1啊
+	initBitBlock()
+
+	// init inode --> 反正一个都没有
+	lowerB := IBLOCK(0)
+	upperB := IBLOCK(sb.Ninodes - 1)
+
+	// 读取的dinode
+	writeDi := Dinode{Size:MAX_UINT32}
+	DINODE_SIZE := int(unsafe.Sizeof(writeDi))
+	for i := lowerB; i <= upperB; i++ {
+		//log.WithField("event", "init").Infof("init dinodes %d", i)
+		// 读取对应的block
+		bytesData := make([]byte, BLOCK_SIZE)
+
+
+		for j := 0; j < int(IPB); j++  {
+			buf := bytes.Buffer{}
+			err := binary.Write(&buf, binary.LittleEndian, writeDi)
+			if err != nil {
+				panic(err)
+			}
+			bufData := buf.Bytes()
+			if len(bufData) != DINODE_SIZE {
+				log.Fatalf("bufData size is not DINODE_SIZE")
+			}
+			copy(bytesData[j*DINODE_SIZE: (j+1)*DINODE_SIZE], bufData)
+		}
+		writeToBlockDIO(i, bytesData)
 	}
-	fmt.Println(sb2)
-	 */
-
-
-	// init inode map
-
-
-	// init data bitmap
 
 	// init root dir
+	rootDir := mkdir([]byte("root"))
+	dirlink(rootDir, []byte("."), rootDir.num)
+	dirlink(rootDir, []byte(".."), rootDir.num)
+	fsyncINode(rootDir)
 
+	walkdir(rootDir)
+
+}
+
+
+func initBitBlock() {
+	// 这里的问题是我好像把bitmap写成了bytemap
+	blockID := BBLOCK(0, NINODES)
+	blockBytes := readBlockDIO(uint32(blockID))
+	log.Infof("Init block at %d", blockID)
+	for index := range blockBytes {
+		if index < int(usedblocks) {
+			log.Infof("Init block %d", index)
+			blockBytes[index] = 1
+		}
+	}
+	fmt.Println(blockBytes)
+	writeToBlockDIO(uint32(blockID), blockBytes)
 }

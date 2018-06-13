@@ -4,8 +4,9 @@ type bufferStatus uint8
 
 const (
 	BUF_BUSY bufferStatus = 1 << iota 	// buffer is locked by some process
-	BUF_VALID bufferStatus = 1 << iota	// buffer has been read from disk
-	BUF_DIRTY bufferStatus = 1 << iota	// buffer needs to be written to disk
+	BUF_VALID bufferStatus = 1 << iota    // buffer has been read from disk
+	BUF_DIRTY bufferStatus = 1 << iota 	// buffer needs to be written to disk
+	BUF_UNUSED bufferStatus = 1 << iota
 )
 
 const BUFFER_SIZE = 1024
@@ -22,9 +23,9 @@ type buffer struct {
 	statusFlag bufferStatus
 	// dev, sector 是对应的设备、扇区管理
 	dev uint8		// 设备
-	sector uint8	// 扇区？
+	sector uint16	// 扇区 这个程序里面表示所存储的块
 
 	prev, next, qnext *buffer
 	// 对应的数据，有着固定的大小
-	data [BUFFER_SIZE]byte
+	data [BLOCK_SIZE]byte
 } 

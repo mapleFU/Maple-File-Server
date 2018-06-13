@@ -2,25 +2,25 @@
 
 ## Requirements
 
-`create` `open` `close` `write` `read` `unlink` 
+`create` `open` `close`  `write` `read` `unlink` 
 
-`cd` `pwd` `mkdir` `rmdir` 
+`cd` `pwd` `mkdir` `rmdir`  
 
 ## Definitions
 
-### Blocks
+### Blocks 
 
 内存块对应。这里实现了对应的buffer，并且在文件中能够根据 `index`寻找到对应的block区域。这里使用的是寻找对应的buffer。
 
-### Block Groups
+### Block Groups 
 
 
 
-### Dictories
+### Dictories 
 
 
 
-### Inodes
+### Inodes 
 
 
 

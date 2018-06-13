@@ -34,5 +34,6 @@ type fsfile struct {
 }
 
 func createFile() *fsfile {
-	panic("Not")
+	unimpletedError()
+	return nil
 }
