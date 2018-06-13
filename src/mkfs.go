@@ -25,6 +25,7 @@ func init()  {
 	if err != nil {
 		log.Fatalln("cannot open the file")
 	}
+	log.SetLevel(log.InfoLevel)
 }
 
 func xuint16(x uint16) uint16 {
@@ -134,8 +135,8 @@ func GenerateFs()  {
 
 	// init inode --> 反正一个都没有
 	lowerB := IBLOCK(0)
-	upperB := IBLOCK(sb.Ninodes - 1)
-
+	upperB := IBLOCK(NINODES)
+	log.Infof("INode init from %d to %d", lowerB, upperB)
 	// 读取的dinode
 	writeDi := Dinode{Size:MAX_UINT32}
 	DINODE_SIZE := int(unsafe.Sizeof(writeDi))
@@ -143,7 +144,6 @@ func GenerateFs()  {
 		//log.WithField("event", "init").Infof("init dinodes %d", i)
 		// 读取对应的block
 		bytesData := make([]byte, BLOCK_SIZE)
-
 
 		for j := 0; j < int(IPB); j++  {
 			buf := bytes.Buffer{}
@@ -175,13 +175,18 @@ func initBitBlock() {
 	// 这里的问题是我好像把bitmap写成了bytemap
 	blockID := BBLOCK(0, NINODES)
 	blockBytes := readBlockDIO(uint32(blockID))
-	log.Infof("Init block at %d", blockID)
-	for index := range blockBytes {
-		if index < int(usedblocks) {
-			log.Infof("Init block %d", index)
-			blockBytes[index] = 1
-		}
+	// TODO:为什么每次都要copy
+	var bitmap BlockBitmap
+	copy(bitmap[:], blockBytes)
+	//bitmap := &BlockBitmap{barray}
+	//log.Infof("Init block at %d", blockID)
+	var index uint16
+	for index = 0; index < uint16(usedblocks); index++ {
+
+		//log.Infof("Init block %d", index)
+		//log.Debugf("Origin:", bitmap.valid(index))
+		bitmap.setValid(index)
 	}
-	fmt.Println(blockBytes)
-	writeToBlockDIO(uint32(blockID), blockBytes)
+	log.Debug(bitmap)
+	writeToBlockDIO(uint32(blockID), bitmap[:])
 }

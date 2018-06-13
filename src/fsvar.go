@@ -199,6 +199,7 @@ func iappend(node *inode, dataStruct interface{})  {
 		// 这个合理么
 		datas = buf.Bytes()
 	}
+
 	// test
 	// 把 Data 写入blocks
 	if node.dinodeData.Nlink < NDIRECT {
@@ -211,6 +212,7 @@ func iappend(node *inode, dataStruct interface{})  {
 
 		blockData := readBlockDIO(linkAddr)
 		bios := node.dinodeData.Size % BLOCK_SIZE
+		logrus.Info("Write ", len(datas), " of data to INode ", node.num, " begin at ", bios, "Data: ", datas)
 		if int(bios) + len(datas) < BLOCK_SIZE {
 			copy(blockData[bios:int(bios) + len(datas)], datas)
 			node.dinodeData.Size += uint32(len(datas))

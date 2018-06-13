@@ -4,7 +4,6 @@ import (
 	"log"
 
 	"github.com/sirupsen/logrus"
-	"fmt"
 )
 
 const NBUF = 50
@@ -95,19 +94,24 @@ func bget(sector uint16) *buffer {
 func balloc() *buffer {
 	// read bitmap
 	lowerB := BBLOCK(0, NINODES)
-	logrus.Debugf("BITMAP_BLOCK_NUM: %d", BITMAP_BLOCK_NUM)
 	upperB := BBLOCK(uint16(BITMAP_BLOCK_NUM), NINODES)
+	logrus.Debugf("BITMAP_BLOCK_NUM: %d", BITMAP_BLOCK_NUM)
+
 	for i := lowerB; i <= upperB; i++ {
 		bitmap := readBlockDIO(uint32(i))
-		fmt.Println(bitmap)
-		for index, b := range bitmap {
+		var blockmap BlockBitmap
+		copy(blockmap[:], bitmap)
+		logrus.Println(bitmap)
+		for index := 0; index < BLOCK_SIZE; index++ {
 			// MD，应该要注意实际的对应关系
-			if b == 0 {
+			if !blockmap.valid(uint16(index)) {
+
 				// unused
-				logrus.Infof("Allocate block at %d sector, pos %d", i, index)
-				bitmap[index] = 1
+				logrus.Infof("Allocate block at %d sector, pos %d (block %t)", i, index, blockmap.valid(uint16(index)))
+				//bitmap[index] = 1
+				blockmap.setValid(uint16(index))
 				retBuf := buffer{statusFlag:BUF_VALID, sector:uint16(uint16(i-lowerB) * BPB + uint16(index))}
-				writeToBlockDIO(uint32(i), bitmap)
+				writeToBlockDIO(uint32(i), blockmap[:])
 				return &retBuf
 			}
 		}

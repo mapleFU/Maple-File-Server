@@ -17,8 +17,9 @@ import (
 	"log"
 	"encoding/binary"
 	"bytes"
-	"fmt"
+
 	"github.com/sirupsen/logrus"
+	"fmt"
 )
 
 /**
@@ -143,7 +144,7 @@ b means bios (in )
 func BBLOCK(b uint16, ninodes uint8) uint8 {
 
 	// 本来应该是 + 2, 但是实际上这里至少有一个block会被INODES TABLE占用，所以 + 3
-	return uint8(uint8(b / BPB) + ninodes / uint8(IPB) + 3)
+	return uint8(uint8(b / BPB) + uint8(uint32(ninodes) / uint32(IPB)) + 3)
 }
 
 
@@ -162,25 +163,37 @@ const DIRSIZ = 14
 const MAX_UINT16 = 65535	// 表示删除的记录
 
 // 存储目录项的条目
-type dirent struct {
-	inum uint16
+// TODO: 搞清楚导入导出的机制
+type Dirent struct {
+	INum uint16
 	// 是不是到时候改回rune比较好
-	name [DIRSIZ]byte
+	Name [DIRSIZ]byte
 }
 
-const DIRENT_SIZE = unsafe.Sizeof(dirent{})
+func (dir *Dirent) String() string {
+	name := make([]byte, 0)
+	var index int
+	for index = 0; dir.Name[index] != 0; index++ {
+		name = append(name, dir.Name[index])
+	}
+
+	return fmt.Sprintf("Dirent(INum: %d, name:%s)", dir.INum, string(name))
+}
+
+const DIRENT_SIZE = unsafe.Sizeof(Dirent{})
 
 // 创建目录
 func mkdir(name []byte) *inode {
 	// TODO: 在本目录下做好查找
 	newInode := ialloc()
 	newInode.dinodeData.FileType = FILETYPE_DIRECT
-
+	// TODO: 调整这个！！！！！！！
+	newInode.dinodeData.Size = 0
 	return newInode
 }
 
 // remove dir
-func rmdir(name []byte) *dirent {
+func rmdir(name []byte) *Dirent {
 	unimpletedError()
 	return nil
 }
@@ -200,7 +213,9 @@ func dirlink(dir *inode, destName []byte, inum uint16)  {
 	}
 	var name [DIRSIZ]byte
 	copy(name[:], destName)
-	iappend(dir, dirent{inum, name})
+	dirItem := Dirent{inum, name}
+	logrus.Debug("Dir size: ", unsafe.Sizeof(dirItem))
+	iappend(dir, dirItem)
 }
 
 // 对目录取消链接
@@ -219,17 +234,19 @@ func checkDir(node *inode) {
 
 func walkdir(dir *inode) {
 	checkDir(dir)
-	var readdir dirent
+	var readdir Dirent
 	STRUCT_SIZE := int(unsafe.Sizeof(readdir))
-	for i := 0; i < int(dir.dinodeData.Nlink); i++ {
+	for i := 0; i <= int(dir.dinodeData.Nlink); i++ {
 		block := readBlockDIO(dir.dinodeData.Addrs[i])
-		logrus.Debugf("read block %d", dir.dinodeData.Addrs[i])
-
+		logrus.Debugf("dir inode block %d, read block %d", IBLOCK(uint32(dir.num)), dir.dinodeData.Addrs[i])
+		//fmt.Println(block)
 		for j := 0;j * STRUCT_SIZE < BLOCK_SIZE && i * BLOCK_SIZE + j * int(STRUCT_SIZE) < int(dir.dinodeData.Size); j++{
+			var curDir Dirent
 
+			logrus.Debug("From ", j * STRUCT_SIZE, " to ", (j + 1) * STRUCT_SIZE, " data --> ", block[j * STRUCT_SIZE: (j + 1) * STRUCT_SIZE])
 			buf := bytes.NewBuffer(block[j * STRUCT_SIZE: (j + 1) * STRUCT_SIZE])
-			binary.Read(buf, binary.LittleEndian, &readdir)
-			fmt.Println(readdir)
+			binary.Read(buf, binary.LittleEndian, &curDir)
+			logrus.Println("Find dir: ", curDir.String())
 		}
 	}
 }
