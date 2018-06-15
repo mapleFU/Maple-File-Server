@@ -5,9 +5,10 @@ import (
 	"unsafe"
 	"encoding/binary"
 	"bytes"
-	"log"
 
-	"github.com/sirupsen/logrus"
+
+	log "github.com/sirupsen/logrus"
+	//"container/list"
 )
 
 /**
@@ -31,9 +32,14 @@ type inode struct {
 }
 
 var icachemap [NINODES]*inode
+var lruINodeBuf *LRUBuffer
 
 func init() {
-	// 初始化 NODE 的 cache
+	lruINodeBuf = NewLRUBuf(50)
+	// sync func
+	//go func() {
+	//
+	//}()
 }
 
 // 析构函数
@@ -75,50 +81,53 @@ func ialloc() *inode {
 	// read super block
 	readsb(&sb)
 	lowerB := IBLOCK(0)
-	upperB := IBLOCK(sb.Ninodes - 1)
+	upperB := IBLOCK(NINODES)
 	INODE_LENGTH := int(unsafe.Sizeof(Dinode{}))
-	// 读取的dinode
-	var readDi Dinode
+
+	//for i := 0; i < NINODES; i++ {
+	//	in := iget(i)
+	//	if in.dinodeData.Size == MAX_UINT32 {
+	//		in.dinodeData.Major++
+	//		in.dinodeData.Size = 0
+	//		in.num = uint16(i)
+	//		fsyncINode(in)
+	//		return in
+	//	}
+	//}
+
 	for i := lowerB; i <= upperB; i++ {
 		// 读取对应的block
 		inodeBlocks = readBlockDIO(i)
 		for innerInum := 0; innerInum < int(IPB); innerInum++  {
 			// read dinode
+			var readDi Dinode
 			curBase := innerInum * INODE_LENGTH		// 目前这一个的基址
-			didata := inodeBlocks[curBase: (innerInum+1) * INODE_LENGTH]
-			// parse didata
-			buf := bytes.NewBuffer(didata)
-			if len(didata) != INODE_LENGTH {
-				panic("Size error!")
-			}
-			log.Printf("Read %d", i)
-			err := binary.Read(buf, binary.LittleEndian, &readDi)
-			if err != nil {
-				panic(err)
-			}
+			readObject(inodeBlocks[curBase: (innerInum+1) * INODE_LENGTH], &readDi)
+			//log.Info(readDi)
 			// not unequal
 			if readDi.Size == MAX_UINT32 {
 				// TODO: impletes this
-				curNode := inode{num:uint16(inodeNum), ref:1, dinodeData:readDi}
-				// 增加计数, 改变占用
 				readDi.Major++
 				readDi.Size = 0
+				curNode := inode{num:uint16((i - lowerB) * uint32(IPB) + uint32(innerInum)), ref:1, dinodeData:readDi}
+
+
 				// 写回数据
 				buf := bytes.Buffer{}
-				err := binary.Write(&buf, binary.LittleEndian, readDi)
+				err := binary.Write(&buf, binary.LittleEndian, curNode.dinodeData)
 				if err != nil {
 					panic(err)
 				}
-				wData := buf.Bytes()
-				for index := 0; index < INODE_LENGTH; index++ {
-					inodeBlocks[curBase+index] = wData[index]
-				}
+
+				log.Info("Debug: size ", curNode.dinodeData.Size)
+				copy(inodeBlocks[curBase:(innerInum+1) * INODE_LENGTH], buf.Bytes())
 				writeToBlockDIO(i, inodeBlocks)
 
 				icachemap[int(i * uint32(IPB)) + innerInum] = &curNode
 
 				// 增加inode
 				innerInum++
+				//fsyncINode(&curNode)
 				return &curNode
 			}
 		}
@@ -137,9 +146,11 @@ func (dinode *Dinode) toINode() *inode {
 
 // 遍历缓存找到对应的项
 func iget( inodeIndex int) *inode {
+
 	if icachemap[inodeIndex] != nil {
 		return icachemap[inodeIndex]
 	}
+
 	// TODO: can we abstract this?
 	// 读取文件，数据同步
 	imap := readBlockDIO(IBLOCK(uint32(inodeIndex)))
@@ -153,18 +164,22 @@ func iget( inodeIndex int) *inode {
 		panic(err)
 	}
 	thisINode := dinode.toINode()
-
+	thisINode.num = uint16(inodeIndex)
+	icachemap[inodeIndex] = thisINode
 	return thisINode
 }
 
 // 向文件中写入 inode
 func fsyncINode(node *inode) {
-	inodeIndex := int(IBLOCK(uint32(node.num)))
+	inodeBlockPos := IBLOCK(uint32(node.num))
 
-	imap := readBlockDIO(IBLOCK(uint32(inodeIndex)))
-	privateIndex := inodeIndex % int(IPB)
+	imap := readBlockDIO(inodeBlockPos)
+
+	privateIndex := int(node.num) % int(IPB)
+
 	begPos := privateIndex * int(unsafe.Sizeof(Dinode{}))
 	endPos := begPos + int(unsafe.Sizeof(Dinode{}))
+	log.Infof("fSync INode %d->%d in block %d", begPos, endPos, inodeBlockPos)
 	//var dinode Dinode
 	buf := bytes.NewBuffer(make([]byte, 0))
 	err := binary.Write(buf, binary.LittleEndian, node.dinodeData)
@@ -172,6 +187,7 @@ func fsyncINode(node *inode) {
 		panic(err)
 	}
 	copy(imap[begPos:endPos], buf.Bytes())
+	writeToBlockDIO(inodeBlockPos, imap)
 	//thisINode := dinode.toINode()
 }
 
@@ -179,7 +195,7 @@ func iaddblock(node *inode) {
 	if node.dinodeData.Nlink < NDIRECT {
 		blockBuf := balloc()
 		node.dinodeData.Addrs[node.dinodeData.Nlink] = uint32(blockBuf.sector)
-		logrus.Infof("Create block with sector %d", blockBuf.sector)
+		log.Infof("Create block with sector %d", blockBuf.sector)
 	} else {
 		unimpletedError()
 	}
@@ -212,7 +228,7 @@ func iappend(node *inode, dataStruct interface{})  {
 
 		blockData := readBlockDIO(linkAddr)
 		bios := node.dinodeData.Size % BLOCK_SIZE
-		logrus.Info("Write ", len(datas), " of data to INode ", node.num, " begin at ", bios, "Data: ", datas)
+		//log.Info("Write ", len(datas), " of data to INode ", node.num, " begin at ", bios, "Data: ", datas)
 		if int(bios) + len(datas) < BLOCK_SIZE {
 			copy(blockData[bios:int(bios) + len(datas)], datas)
 			node.dinodeData.Size += uint32(len(datas))
@@ -236,4 +252,9 @@ func iappend(node *inode, dataStruct interface{})  {
 		unimpletedError()
 	}
 
+}
+
+// 全部修改一个节点的信息
+func imodify(node *inode, newData []byte) {
+	unimpletedError()
 }

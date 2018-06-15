@@ -17,7 +17,7 @@ const FS_IMG_FILE = "maple-xv6.dmg"
 
 var fsfd *os.File
 
-func init()  {
+func initMkfs()  {
 	var err error
 	// 基本的信息
 	fsfd, err = os.OpenFile(FS_IMG_FILE, os.O_RDWR | os.O_CREATE | os.O_TRUNC,
@@ -88,7 +88,7 @@ const BITMAP_BLOCK_NUM uint32 = SIZE / (BLOCK_SIZE * 8) + 1
 var usedblocks uint32
 
 func GenerateFs()  {
-
+	initMkfs()
 	defer fsfd.Close()
 
 	sb := superblock{xuint32(1024), xuint32(200), xuint32(995)}
@@ -118,8 +118,10 @@ func GenerateFs()  {
 	if err != nil {
 		panic(err)
 	}
-	fmt.Println(buf.Bytes())
-	fmt.Println(len(buf.Bytes()) == int(unsafe.Sizeof(sb)))
+
+	if len(buf.Bytes()) != int(unsafe.Sizeof(sb)) {
+		log.Fatal("SuperBlock size error, got ", len(buf.Bytes()))
+	}
 
 	if err != nil {
 		panic("bytes write error")
@@ -161,13 +163,10 @@ func GenerateFs()  {
 	}
 
 	// init root dir
-	rootDir := mkdir([]byte("root"))
-	dirlink(rootDir, []byte("."), rootDir.num)
-	dirlink(rootDir, []byte(".."), rootDir.num)
-	fsyncINode(rootDir)
 
-	walkdir(rootDir)
-
+	rootDir := MkRootDir()
+	WalkDir(rootDir)
+	log.Infof("Root INode: ", rootDir.num)
 }
 
 
@@ -182,9 +181,6 @@ func initBitBlock() {
 	//log.Infof("Init block at %d", blockID)
 	var index uint16
 	for index = 0; index < uint16(usedblocks); index++ {
-
-		//log.Infof("Init block %d", index)
-		//log.Debugf("Origin:", bitmap.valid(index))
 		bitmap.setValid(index)
 	}
 	log.Debug(bitmap)

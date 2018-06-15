@@ -18,5 +18,10 @@ func (bitmap *BlockBitmap) setInvalid(index uint16) {
 
 func (bitmap *BlockBitmap) setBitmap(index uint16, value bool) {
 	bitmapIndex := index >> 3
-	bitmap[int(bitmapIndex)] |= 1 << (index % 8)
+	if value {
+		bitmap[int(bitmapIndex)] |= 1 << (index % 8)
+	} else {
+		bitmap[int(bitmapIndex)] &= 255 & (^(1 << (index % 8)))
+	}
+
 }
