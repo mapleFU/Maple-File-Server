@@ -106,7 +106,6 @@ const (
 	FILETYPE_FREE = iota
 	FILETYPE_FILE
 	FILETYPE_DIRECT
-
 )
 
 type Dinode struct {

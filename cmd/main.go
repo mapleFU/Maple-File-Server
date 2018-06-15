@@ -1,11 +1,11 @@
 package main
 
 import (
-	"github.com/mapleFU/TongjiFileLab/src"
 
 	//"fmt"
 	//"unsafe"
 	"github.com/sirupsen/logrus"
+	"github.com/mapleFU/TongjiFileLab/mapleFS"
 )
 
 func init()  {
@@ -13,5 +13,5 @@ func init()  {
 }
 
 func main()  {
-	src.Serve()
+	mapleFS.Serve()
 }

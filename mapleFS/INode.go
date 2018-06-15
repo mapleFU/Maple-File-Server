@@ -1,15 +1,23 @@
-package src
+package mapleFS
 
 import (
 	"sync"
 	"unsafe"
-	"encoding/binary"
 	"bytes"
-
-
+	"encoding/binary"
 	log "github.com/sirupsen/logrus"
-	//"container/list"
 )
+
+type Dinode struct {
+	FileType uint16	// 文件的类型
+	Nlink uint16		// link 链接的数量
+
+	Major, Minor uint16	// 对应的major minor, 我这里好像没啥用...好吧我他妈把MAJOR当成LINK链接好了,MINOR当成-s link好了
+	Size uint32		// size of file
+	Addrs [NDIRECT + 1]uint32	// 直接指向的数据块，最后一个+1对应的是二级索引
+
+}
+
 
 /**
 inode is dinode in memory
@@ -31,49 +39,6 @@ type inode struct {
 	dinodeData Dinode
 }
 
-var icachemap [NINODES]*inode
-var lruINodeBuf *LRUBuffer
-
-func init() {
-	lruINodeBuf = NewLRUBuf(50)
-	// sync func
-	//go func() {
-	//
-	//}()
-}
-
-// 析构函数
-func (inode *inode) destruct()  {
-
-}
-
-// the system call to create inode
-/**
-遍历磁盘上的结构，寻找到空闲的结构，标注并返回
-
-/**
-	pos, err := fsfd.Seek(BLOCK_SIZE * 1, 0)
-	if err != nil {
-		panic(err)
-	}
-	if pos != BLOCK_SIZE * 1 {
-		log.Fatalf("Move to %d in readsb", pos)
-	}
-	datas := make([]byte, BLOCK_SIZE)
-	readSize, err := fsfd.Read(datas)
-	if readSize != BLOCK_SIZE || err != nil {
-		log.Fatalf("Only read %d\n", readSize)
-	}
-	buf := bytes.NewBuffer(datas[:unsafe.Sizeof(superblock{})])
-	err = binary.Read(buf, binary.LittleEndian, unInitSptr)
-	if err != nil {
-		panic(err)
-	}
-
-
- */
-
- var inodeNum = ROOT_INODE_NUM
 
 func ialloc() *inode {
 	var inodeBlocks []byte
@@ -112,7 +77,7 @@ func ialloc() *inode {
 				copy(inodeBlocks[curBase:(innerInum+1) * INODE_LENGTH], buf.Bytes())
 				writeToBlockDIO(i, inodeBlocks)
 
-				icachemap[int(i * uint32(IPB)) + innerInum] = &curNode
+				//icachemap[int(i * uint32(IPB)) + innerInum] = &curNode
 
 				// 增加inode
 				innerInum++
@@ -135,11 +100,6 @@ func (dinode *Dinode) toINode() *inode {
 
 // 遍历缓存找到对应的项
 func iget( inodeIndex int) *inode {
-
-	if icachemap[inodeIndex] != nil {
-		return icachemap[inodeIndex]
-	}
-
 	// TODO: can we abstract this?
 	// 读取文件，数据同步
 	imap := readBlockDIO(IBLOCK(uint32(inodeIndex)))
@@ -154,7 +114,7 @@ func iget( inodeIndex int) *inode {
 	}
 	thisINode := dinode.toINode()
 	thisINode.num = uint16(inodeIndex)
-	icachemap[inodeIndex] = thisINode
+	//icachemap[inodeIndex] = thisINode
 	return thisINode
 }
 
@@ -225,26 +185,3 @@ func iappend(node *inode, dataStruct interface{})  {
 func imodify(node *inode, newData []byte) {
 	unimpletedError()
 }
-
-// 向文件中写入 inode
-func fsyncINode(node *inode) {
-	inodeBlockPos := IBLOCK(uint32(node.num))
-
-	imap := readBlockDIO(inodeBlockPos)
-
-	privateIndex := int(node.num) % int(IPB)
-
-	begPos := privateIndex * int(unsafe.Sizeof(Dinode{}))
-	endPos := begPos + int(unsafe.Sizeof(Dinode{}))
-	log.Infof("fSync INode %d->%d in block %d", begPos, endPos, inodeBlockPos)
-	//var dinode Dinode
-	buf := bytes.NewBuffer(make([]byte, 0))
-	err := binary.Write(buf, binary.LittleEndian, node.dinodeData)
-	if err != nil {
-		panic(err)
-	}
-	copy(imap[begPos:endPos], buf.Bytes())
-	writeToBlockDIO(inodeBlockPos, imap)
-	//thisINode := dinode.toINode()
-}
-
