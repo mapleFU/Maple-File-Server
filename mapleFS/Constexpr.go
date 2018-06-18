@@ -37,28 +37,28 @@ const (
 const IPB = BLOCK_SIZE / unsafe.Sizeof(Dinode{})
 
 // Bitmap bits per block
-const BPB  = BLOCK_SIZE * 8
+const BPB = BLOCK_SIZE * 8
 
 // BITMAP 占有的 BLOCK 的量
-const BITMAP_BLOCK_NUM uint32 = SIZE / (BLOCK_SIZE * 8) + 1
+const BITMAP_BLOCK_NUM uint32 = SIZE/(BLOCK_SIZE*8) + 1
 
 // 目录对应的 bytes
-const DIRSIZ = 14
+const DIRSIZ = 28
 
 const MAX_UINT16 = 65535
 
 type bufferStatus uint8
 
 const (
-	BUF_BUSY bufferStatus = 1 << iota 	// buffer is locked by some process
-	BUF_VALID bufferStatus = 1 << iota    // buffer has been read from disk
-	BUF_DIRTY bufferStatus = 1 << iota 	// buffer needs to be written to disk
+	BUF_BUSY   bufferStatus = 1 << iota // buffer is locked by some process
+	BUF_VALID  bufferStatus = 1 << iota // buffer has been read from disk
+	BUF_DIRTY  bufferStatus = 1 << iota // buffer needs to be written to disk
 	BUF_UNUSED bufferStatus = 1 << iota
 )
 
 const DIRENT_SIZE = uint(unsafe.Sizeof(Dirent{}))
 
-const MAX_UINT32  = 4294967295
+const MAX_UINT32 = 4294967295
 
-const bitblocks uint32 = SIZE / (BLOCK_SIZE * 8) + 1
-const usedblocks = NINODES / uint32(IPB) + 3 + bitblocks
+const bitblocks uint32 = SIZE/(BLOCK_SIZE*8) + 1
+const usedblocks = NINODES/uint32(IPB) + 3 + bitblocks

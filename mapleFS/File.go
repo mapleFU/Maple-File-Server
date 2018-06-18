@@ -11,14 +11,33 @@ const (
 
 type FsFile struct {
 	ref      int // ref cnt
-	inodePtr *inode
-	fileType FileType
+	inodePtr *INode
 
 	readable  bool
 	writeable bool
 }
 
-func createFile() *FsFile {
+// 创建文件
+func CreateFile(parentDir *INode, fileName []byte) *INode {
+	iNode := ialloc()
+	iNode.dinodeData.FileType = FILETYPE_FILE
+	iNode.dinodeData.Size = 0
+	fsyncINode(iNode)
+
+	// link dir
+	dirlink(parentDir, fileName, iNode.num, iNode.dinodeData.FileType)
+	return iNode
+}
+
+// 判断是否是文件
+func (node *INode) IsFile() bool {
+	return node.dinodeData.FileType == FILETYPE_FILE
+}
+
+func AppendFile(fileINode *INode, newData []byte) {
 	unimpletedError()
-	return nil
+}
+
+func EditFile(fileINode *INode, newData []byte) {
+	unimpletedError()
 }

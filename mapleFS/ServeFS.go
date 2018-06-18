@@ -5,10 +5,10 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-func Serve()  {
+func Serve() {
 	initServe()
-	var rootDir inode
-	var curDir *inode
+	var rootDir INode
+	var curDir *INode
 	ReadRoot(&rootDir)
 	log.Println(rootDir.dinodeData)
 	WalkDir(&rootDir)
@@ -18,8 +18,8 @@ func Serve()  {
 	shell.Println("Welcome to maple-xv6 fs! Press help to get information")
 
 	shell.AddCmd(&ishell.Cmd{
-		Name:"cd",
-		Help:"Switch Current Dir",
+		Name: "cd",
+		Help: "Switch Current Dir",
 		Func: func(c *ishell.Context) {
 			if len(c.Args) == 0 {
 				c.Println("You didn't input arguments")
@@ -48,8 +48,8 @@ func Serve()  {
 	})
 
 	shell.AddCmd(&ishell.Cmd{
-		Name:"ls",
-		Help:"List the directory",
+		Name: "ls",
+		Help: "List the directory",
 		Func: func(c *ishell.Context) {
 			dirs := WalkDir(curDir)
 			for _, d := range dirs {
@@ -59,8 +59,8 @@ func Serve()  {
 	})
 
 	shell.AddCmd(&ishell.Cmd{
-		Name:"mkdir",
-		Help:"Create a directory in the current dir",
+		Name: "mkdir",
+		Help: "Create a directory in the current dir",
 		Func: func(c *ishell.Context) {
 			if len(c.Args) == 0 {
 				c.Println("You didn't input arguments")

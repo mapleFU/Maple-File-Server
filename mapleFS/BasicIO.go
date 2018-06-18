@@ -100,7 +100,7 @@ func readBlockDIO(blockNum uint32) []byte {
 }
 
 // 向文件中写入 inode
-func fsyncINode(node *inode) {
+func fsyncINode(node *INode) {
 	inodeBlockPos := IBLOCK(uint32(node.num))
 
 	imap := readBlockDIO(inodeBlockPos)
