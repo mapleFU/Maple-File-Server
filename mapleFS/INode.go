@@ -38,7 +38,24 @@ type INode struct {
 	dinodeData Dinode
 }
 
-func ialloc() *INode {
+func (node *INode) GetINum() uint16 {
+	return node.num
+}
+
+func (node *INode) GetType() string {
+	switch node.dinodeData.FileType {
+	case FILETYPE_DIRECT:
+		return "DIRECT"
+	case FILETYPE_FILE:
+		return "FILE"
+	case FILETYPE_FREE:
+		return "UNKNOWN"
+	default:
+		panic("Type of dir is unexcepted.")
+	}
+}
+
+func IAlloc() *INode {
 	var inodeBlocks []byte
 	var sb superblock
 	// read super block
@@ -96,7 +113,7 @@ func (dinode *Dinode) toINode() *INode {
 }
 
 // 遍历缓存找到对应的项
-func iget(inodeIndex int) *INode {
+func IGet(inodeIndex int) *INode {
 	// TODO: can we abstract this?
 	// 读取文件，数据同步
 	imap := readBlockDIO(IBLOCK(uint32(inodeIndex)))
@@ -115,7 +132,7 @@ func iget(inodeIndex int) *INode {
 	return thisINode
 }
 
-func iaddblock(node *INode) {
+func IAddblock(node *INode) {
 	if node.dinodeData.Nlink < NDIRECT {
 		blockBuf := balloc()
 		node.dinodeData.Addrs[node.dinodeData.Nlink] = uint32(blockBuf.sector)
@@ -126,7 +143,7 @@ func iaddblock(node *INode) {
 }
 
 // 向inode中插入数据
-func iappend(node *INode, dataStruct interface{}) {
+func IAppend(node *INode, dataStruct interface{}) {
 	//var newIndex uint16
 	var datas, byteData []byte
 	byteData, ok := dataStruct.([]byte)
@@ -146,7 +163,7 @@ func iappend(node *INode, dataStruct interface{}) {
 		linkAddr := node.dinodeData.Addrs[node.dinodeData.Nlink]
 		if linkAddr == 0 {
 			// 需要申请空间
-			iaddblock(node)
+			IAddblock(node)
 			linkAddr = node.dinodeData.Addrs[node.dinodeData.Nlink]
 		}
 
@@ -166,7 +183,7 @@ func iappend(node *INode, dataStruct interface{}) {
 			node.dinodeData.Size += uint32(BLOCK_SIZE - bios)
 			node.dinodeData.Nlink++
 			// 继续 append, 调用别的部分
-			iappend(node, datas[BLOCK_SIZE-bios:])
+			IAppend(node, datas[BLOCK_SIZE-bios:])
 		}
 		// 写回
 		writeToBlockDIO(linkAddr, blockData)
@@ -179,6 +196,38 @@ func iappend(node *INode, dataStruct interface{}) {
 }
 
 // 全部修改一个节点的信息
-func imodify(node *INode, newData []byte) {
+func IModify(node *INode, newData []byte) {
 	unimpletedError()
+}
+
+func (node *INode) BufferStream() <-chan *buffer {
+	bufChan := make(chan *buffer)
+	// 向 chan 发送信息
+	go func() {
+
+		var index uint16
+		for index = 0; index < node.dinodeData.Nlink && index < NDIRECT; index++ {
+			bufChan <- bget(uint16(node.dinodeData.Addrs[int(index)]))
+		}
+		if node.dinodeData.Nlink == NDIRECT {
+			// 读取
+			secondBuf := bget(uint16(node.dinodeData.Addrs[NDIRECT]))
+			// 里面的元素数目
+			nodeSize := int(unsafe.Sizeof(uint32(0)))
+			// 不可能等于0，所以一个个读
+			var readSecondIndex uint32 // 读出来的索引地址
+			var secIndex int           // 次级对应的index
+			for secIndex < BLOCK_SIZE/nodeSize {
+				readObject(secondBuf.data[secIndex*nodeSize:(secIndex+1)*nodeSize], &readSecondIndex)
+				if readSecondIndex == 0 {
+					close(bufChan)
+					return
+				} else {
+					bufChan <- bget(uint16(readSecondIndex))
+				}
+			}
+			close(bufChan)
+		}
+	}()
+	return bufChan
 }

@@ -29,13 +29,13 @@ func Serve() {
 				return
 			}
 			dirName := []byte(c.Args[0])
-			dirINum := dirlookup(curDir, dirName)
+			dirINum := Dirlookup(curDir, dirName)
 			if dirINum < 0 {
 				c.Println("Dir doesn't exist!")
 				return
 			}
 			// 获得实际的inode
-			dirINode := iget(int(dirINum))
+			dirINode := IGet(int(dirINum))
 
 			if dirINode.dinodeData.FileType != FILETYPE_DIRECT {
 				c.Println("The type of ", c.Args[0], " is not dir")
@@ -68,7 +68,7 @@ func Serve() {
 			}
 			for createIndex := 0; createIndex < len(c.Args); createIndex++ {
 				toCreateName := []byte(c.Args[createIndex])
-				ifExist := dirlookup(curDir, toCreateName)
+				ifExist := Dirlookup(curDir, toCreateName)
 				if ifExist > 0 {
 					c.Println("the direct ", string(toCreateName), " already exists")
 					return

@@ -1,5 +1,7 @@
 package mapleFS
 
+import "log"
+
 type FileType uint
 
 // https://stackoverflow.com/questions/14426366/what-is-an-idiomatic-way-of-representing-enums-in-go
@@ -19,7 +21,7 @@ type FsFile struct {
 
 // 创建文件
 func CreateFile(parentDir *INode, fileName []byte) *INode {
-	iNode := ialloc()
+	iNode := IAlloc()
 	iNode.dinodeData.FileType = FILETYPE_FILE
 	iNode.dinodeData.Size = 0
 	fsyncINode(iNode)
@@ -40,4 +42,40 @@ func AppendFile(fileINode *INode, newData []byte) {
 
 func EditFile(fileINode *INode, newData []byte) {
 	unimpletedError()
+}
+
+func RemoveFileWithName(parentNode *INode, fileName []byte, newData []byte) {
+	unimpletedError()
+}
+
+func RemoveFile(fileINode *INode) {
+	unimpletedError()
+}
+
+func ReadFileFromINum(iNum uint16) []byte {
+	fINode := IGet(iNum)
+	if fINode == nil {
+		return nil
+	} else {
+		return ReadFile(fINode)
+	}
+}
+
+func ReadFile(fileINode *INode) []byte {
+	if !fileINode.IsFile() {
+		log.Fatal("INode ", fileINode, " is not file.")
+	}
+
+	var retData []byte
+	// read non second data
+	var cnt uint32 = 0
+	var endvalue uint32 = BLOCK_SIZE
+	for buf := range fileINode.BufferStream() {
+		cnt++
+		if cnt*BLOCK_SIZE > fileINode.dinodeData.Size {
+			endvalue = cnt*BLOCK_SIZE - fileINode.dinodeData.Size
+		}
+		retData = append(retData, buf.data[:endvalue]...)
+	}
+	return retData
 }

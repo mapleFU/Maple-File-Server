@@ -1,8 +1,11 @@
 package API
 
 import (
+	"fmt"
 	"github.com/gin-gonic/gin"
 	"github.com/mapleFU/TongjiFileLab/mapleFS"
+	"log"
+	"net/url"
 )
 
 type FileSchema struct {
@@ -17,8 +20,27 @@ func main() {
 	mapleFS.ReadRoot(&rootDir)
 	currentDir := &rootDir
 
+	checkNameExists := func(context *gin.Context) (bool, string) {
+		name, exists := context.GetPostForm("name")
+		if !exists {
+			context.JSON(422, map[string]string{
+				"error": "You lost 'name' argument in post /dirs/{name}",
+			})
+			return false, ""
+		}
+		iNum := mapleFS.Dirlookup(currentDir, []byte(name))
+		if iNum != -1 {
+			// already exists
+			context.JSON(409, map[string]string{
+				"error": fmt.Sprintf("file %s already exists in current dir", name),
+			})
+			return false, ""
+		}
+		return true, name
+	}
+
 	// list files
-	r.GET("/files", func(context *gin.Context) {
+	r.GET("/dirs", func(context *gin.Context) {
 		curFiles := mapleFS.WalkDir(currentDir)
 
 		var fileDatas []FileSchema
@@ -36,21 +58,77 @@ func main() {
 	// read concrete file, like cat
 	r.GET("/files/:name", func(context *gin.Context) {
 		// watch a file
+		fileName := context.Param("name")
+		iNum := mapleFS.Dirlookup(currentDir, []byte(fileName))
+		if iNum == -1 {
+			context.String(404, "Resource not found.")
+		}
+		var resultMap = map[string]string{
+			"text": string(mapleFS.ReadFileFromINum(uint16(iNum))),
+		}
+
+		context.JSON(200, resultMap)
 	})
 
 	// mkdir
 	r.POST("/dirs/:name", func(context *gin.Context) {
-
+		exists, name := checkNameExists(context)
+		if exists {
+			return
+		}
+		// parse arguments now
+		iNode := mapleFS.MkDirWithParent([]byte(name), currentDir)
+		u := url.URL{}
+		u.Host = "127.0.0.1"
+		u.Path = "/dirs/" + name
+		context.Header("Location", u.String())
+		// ?
+		context.JSON(201, FileSchema{
+			name,
+			iNode.GetINum(),
+			iNode.GetType(),
+		})
 	})
 
+	r.DELETE("/files/:name", func(context *gin.Context) {
+
+	})
 	// rmdir
 	r.DELETE("/dirs/:name", func(context *gin.Context) {
-
+		name, exists := context.GetPostForm("name")
+		if !exists {
+			context.JSON(422, map[string]string{
+				"error": "You lost 'name' argument in post /dirs/{name}",
+			})
+		}
+		iNum := mapleFS.Dirlookup(currentDir, []byte(name))
+		if iNum == -1 {
+			// already exists
+			context.JSON(404, map[string]string{
+				"error": fmt.Sprintf("file %s not found in current dir", name),
+			})
+		}
+		mapleFS.RmDir(mapleFS.IGet(iNum))
+		context.JSON(404, nil)
 	})
 
 	// create file
 	r.POST("/files/:name", func(context *gin.Context) {
+		exists, name := checkNameExists(context)
+		if exists {
+			return
+		}
+		iNode := mapleFS.CreateFile(currentDir, []byte(name))
+		u := url.URL{}
+		u.Host = "127.0.0.1"
+		u.Path = "/files/" + name
+		context.Header("Location", u.String())
 
+		context.JSON(201, FileSchema{
+			name,
+			iNode.GetINum(),
+			iNode.GetType(),
+		})
 	})
 
 	// synchronize file

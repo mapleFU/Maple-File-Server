@@ -12,7 +12,7 @@ import (
 // 创建目录
 func MkDir(name []byte) *INode {
 	// TODO: 在本目录下做好查找
-	newInode := ialloc()
+	newInode := IAlloc()
 	log.Info("Alloc INode with inum ", newInode.num)
 	newInode.dinodeData.FileType = FILETYPE_DIRECT
 	//newInode.dinodeData.Size = 0
@@ -87,11 +87,11 @@ func dirlink(dir *INode, destName []byte, inum uint16, linkedFileType uint16) {
 	copy(name[:], destName)
 	dirItem := Dirent{inum, name, linkedFileType}
 	//log.Debug("Dir size: ", unsafe.Sizeof(dirItem))
-	iappend(dir, dirItem)
+	IAppend(dir, dirItem)
 }
 
 // 对目录取消链接
-func dirunlink(dir *INode, destName []byte) {
+func Dirunlink(dir *INode, destName []byte) {
 	if dir.dinodeData.FileType != FILETYPE_DIRECT {
 		log.Fatalf("Type of file error, INode is not dir in dirunlink")
 	}
@@ -127,7 +127,7 @@ func WalkDir(dir *INode) []*Dirent {
 	return retArray
 }
 
-func dirlookup(dir *INode, destName []byte) int {
+func Dirlookup(dir *INode, destName []byte) int {
 	// return 0 if not found
 	checkDir(dir)
 	// TODO: we can optimize it

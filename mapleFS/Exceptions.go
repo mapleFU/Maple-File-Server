@@ -1,5 +1,7 @@
 package mapleFS
 
+import log "github.com/sirupsen/logrus"
+
 func unimpletedError() {
-	panic("The Method None Impleted")
+	log.Fatalf("The Method None Impleted")
 }
