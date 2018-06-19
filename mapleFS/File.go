@@ -41,7 +41,10 @@ func AppendFile(fileINode *INode, newData []byte) {
 }
 
 func EditFile(fileINode *INode, newData []byte) {
-	unimpletedError()
+	if !fileINode.IsFile() {
+		log.Fatalf("File iNode is not file in EditFile")
+	}
+	IModify(fileINode, newData)
 }
 
 func RemoveFileWithName(parentNode *INode, fileName []byte, newData []byte) {

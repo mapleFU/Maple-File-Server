@@ -20,6 +20,7 @@ func main() {
 	mapleFS.ReadRoot(&rootDir)
 	currentDir := &rootDir
 
+	// 检查名称是否存在，如果存在折返回 false
 	checkNameExists := func(context *gin.Context) (bool, string) {
 		name, exists := context.GetPostForm("name")
 		if !exists {
@@ -37,6 +38,26 @@ func main() {
 			return false, ""
 		}
 		return true, name
+	}
+
+	// 检查名称是否存在，如果不存在折返回 false
+	checkNameUnExists := func(context *gin.Context) (bool, int) {
+		name, exists := context.GetPostForm("name")
+		if !exists {
+			context.JSON(422, map[string]string{
+				"error": "You lost 'name' argument in post /dirs/{name}",
+			})
+			return false, -1
+		}
+		iNum := mapleFS.Dirlookup(currentDir, []byte(name))
+		if iNum == -1 {
+			// already exists
+			context.JSON(404, map[string]string{
+				"error": fmt.Sprintf("file %s not found in current dir", name),
+			})
+			return false, -1
+		}
+		return true, iNum
 	}
 
 	// list files
@@ -95,18 +116,9 @@ func main() {
 	})
 	// rmdir
 	r.DELETE("/dirs/:name", func(context *gin.Context) {
-		name, exists := context.GetPostForm("name")
+		exists, iNum := checkNameUnExists(context)
 		if !exists {
-			context.JSON(422, map[string]string{
-				"error": "You lost 'name' argument in post /dirs/{name}",
-			})
-		}
-		iNum := mapleFS.Dirlookup(currentDir, []byte(name))
-		if iNum == -1 {
-			// already exists
-			context.JSON(404, map[string]string{
-				"error": fmt.Sprintf("file %s not found in current dir", name),
-			})
+			return
 		}
 		mapleFS.RmDir(mapleFS.IGet(iNum))
 		context.JSON(404, nil)
@@ -133,7 +145,21 @@ func main() {
 
 	// synchronize file
 	r.PUT("/files/:name", func(context *gin.Context) {
+		exists, name := checkNameExists(context)
+		if !exists {
+			return
+		}
+		iNode := mapleFS.Dirlookup(currentDir, []byte(name))
+		if iNode == -1 {
+			context.JSON(404, nil)
+		}
+		newData, exists := context.GetPostForm("data")
+		if !exists {
+			context.JSON(409, "data not exists")
+		}
 
+		mapleFS.EditFile(mapleFS.IGet(iNode), []byte(newData))
+		context.JSON(204, nil)
 	})
 
 	// 退出系统

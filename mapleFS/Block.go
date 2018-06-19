@@ -12,16 +12,22 @@ disk blocks
   xv6 uses single-sector blocks for simplicity
 
 dev/sector 应该是单一指定的位置？
- */
+*/
 type buffer struct {
 	statusFlag bufferStatus
 	// dev, sector 是对应的设备、扇区管理
-	dev uint8		// 设备
-	sector uint16	// 扇区 这个程序里面表示所存储的块
+	dev    uint8  // 设备
+	sector uint16 // 扇区 这个程序里面表示所存储的块
 
 	prev, next, qnext *buffer
 	// 对应的数据，有着固定的大小
 	data [BLOCK_SIZE]byte
+}
+
+var zeroBuf []byte
+
+func init() {
+	zeroBuf := make([]byte, BLOCK_SIZE)
 }
 
 // 所有bget的对象都需要已经设置了bitmap
@@ -55,7 +61,7 @@ func balloc() *buffer {
 				logrus.Infof("Allocate block at %d sector, pos %d (block %t)", i, index, blockmap.valid(uint16(index)))
 				//bitmap[index] = 1
 				blockmap.setValid(uint16(index))
-				retBuf := buffer{statusFlag:BUF_VALID, sector:uint16(uint16(i-lowerB) * BPB + uint16(index))}
+				retBuf := buffer{statusFlag: BUF_VALID, sector: uint16(uint16(i-lowerB)*BPB + uint16(index))}
 				writeToBlockDIO(uint32(i), blockmap[:])
 				return &retBuf
 			}
@@ -65,13 +71,29 @@ func balloc() *buffer {
 	return nil
 }
 
-
 // 完成读写
-func brelse(ptrBuf *buffer)  {
+func brelse(ptrBuf *buffer) {
 	if ptrBuf.statusFlag == BUF_DIRTY {
 		writeToBlockDIO(uint32(ptrBuf.sector), ptrBuf.data[:])
 	}
 
 	ptrBuf.statusFlag = BUF_UNUSED
 	//ptrBuf.statusFlag &= ~BUF_BUSY
+}
+
+// 初始化这个块的内容为zero
+func bzero(ptrBuf *buffer) {
+	copy(ptrBuf.data[:], zeroBuf)
+}
+
+// 释放申请的块
+func bfree(ptrBuf *buffer) {
+	bzero(ptrBuf)
+	bblock := uint16(BBLOCK(ptrBuf.sector, NINODES))
+	var blockBitMap BlockBitmap
+	copy(blockBitMap[:], readBlockDIO(uint32(bblock)))
+
+	pos := ptrBuf.sector % BPB
+	blockBitMap.setInvalid(bblock)
+	writeToBlockDIO(uint32(ptrBuf.sector), ptrBuf.data[:])
 }

@@ -195,9 +195,79 @@ func IAppend(node *INode, dataStruct interface{}) {
 
 }
 
+// 我总觉得这个函数会出事
 // 全部修改一个节点的信息
 func IModify(node *INode, newData []byte) {
-	unimpletedError()
+	var editedBytes uint32 = 0 // 编辑过的byte
+	var remainBytes = uint32(len(newData))
+	var ifEnd = false // 读写是否停止
+	var cnt = 0
+	// 先用掉已经申请的块
+	for buf := range node.BufferStream() {
+		if !ifEnd {
+			cnt++
+			// 先编辑存在的buf
+			if remainBytes > BLOCK_SIZE {
+				copy(buf.data[:], newData[editedBytes:editedBytes+BLOCK_SIZE])
+				editedBytes += BLOCK_SIZE
+				remainBytes -= BLOCK_SIZE
+			} else {
+				bzero(buf)
+				copy(buf.data[:remainBytes], newData[editedBytes:editedBytes+remainBytes])
+				editedBytes += remainBytes
+				remainBytes = 0
+				// release node data
+				ifEnd = false
+
+			}
+		} else {
+			bfree(buf)
+		}
+	}
+	oldSize := node.dinodeData.Size
+	// 如果没有完成，iappend 会妥善修改内容
+	node.dinodeData.Size = editedBytes
+	if !ifEnd {
+		// 没有结束，添加内容
+		for remainBytes > 0 {
+			IAppend(node, newData[editedBytes:])
+		}
+	} else {
+		// 内容过剩，处理NLink
+		currentUsed := editedBytes / BLOCK_SIZE
+		if editedBytes%BLOCK_SIZE != 0 {
+			currentUsed++
+		}
+		oldUsed := oldSize / BLOCK_SIZE
+		if oldSize%BLOCK_SIZE != 0 {
+			oldSize++
+		}
+		// 使用
+		node.dinodeData.Nlink = uint16(currentUsed)
+		if currentUsed >= NDIRECT {
+			var secondUsed = int(currentUsed - NDIRECT)
+			buf := bget(uint16(node.dinodeData.Addrs[NDIRECT]))
+			intSize := int(unsafe.Sizeof(uint32(0)))
+			var secnt int
+			var nodeNum uint32
+			for secnt < int(oldUsed-currentUsed) {
+				readObject(buf.data[intSize*(secondUsed+secnt):intSize*(secondUsed+secnt+1)], &nodeNum)
+				// 释放多余的块
+				bfree(bget(uint16(nodeNum)))
+				secnt++
+			}
+			copy(buf.data[intSize*secondUsed:], zeroBuf[intSize*secondUsed:])
+		} else {
+			// 初始化 ADDRS 字段
+			node.dinodeData.Nlink = uint16(currentUsed)
+			for i := range node.dinodeData.Addrs {
+				if i > int(node.dinodeData.Nlink) {
+					node.dinodeData.Addrs[i] = 0
+				}
+			}
+		}
+	}
+	fsyncINode(node)
 }
 
 func (node *INode) BufferStream() <-chan *buffer {

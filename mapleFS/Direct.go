@@ -67,6 +67,7 @@ func (dirNode *INode) DirIsEmpty() bool {
 func RmDir(dirNode *INode) bool {
 	checkDir(dirNode)
 	if dirNode.DirIsEmpty() {
+
 		unimpletedError()
 		//parent := iget(dir)
 		return true
@@ -91,11 +92,24 @@ func dirlink(dir *INode, destName []byte, inum uint16, linkedFileType uint16) {
 }
 
 // 对目录取消链接
-func Dirunlink(dir *INode, destName []byte) {
+func Dirunlink(dir *INode, destName []byte) bool {
+	unimpletedError()
 	if dir.dinodeData.FileType != FILETYPE_DIRECT {
 		log.Fatalf("Type of file error, INode is not dir in dirunlink")
 	}
-	unimpletedError()
+	unlinkINum := Dirlookup(dir, destName)
+	if unlinkINum == -1 {
+		return false
+	}
+	// 处理被链接的inode
+	unlinkINode := IGet(unlinkINum)
+	unlinkINode.dinodeData.Major--
+	if unlinkINode.dinodeData.Major == 0 {
+
+	} else {
+		fsyncINode(unlinkINode)
+	}
+	return true
 }
 
 func checkDir(node *INode) {
@@ -110,20 +124,38 @@ func WalkDir(dir *INode) []*Dirent {
 	STRUCT_SIZE := int(unsafe.Sizeof(readdir))
 
 	var retArray []*Dirent
-	for i := 0; i <= int(dir.dinodeData.Nlink); i++ {
-		block := readBlockDIO(dir.dinodeData.Addrs[i])
-		log.Debugf("dir INode block %d, read block %d", IBLOCK(uint32(dir.num)), dir.dinodeData.Addrs[i])
-		//fmt.Println(block)
-		for j := 0; j*STRUCT_SIZE < BLOCK_SIZE && i*BLOCK_SIZE+j*int(STRUCT_SIZE) < int(dir.dinodeData.Size); j++ {
+	// 直接按照Nlink 和SIZE读取
+	for buf := range dir.BufferStream() {
+		for j := 0; j*STRUCT_SIZE < BLOCK_SIZE && int(buf.sector)*BLOCK_SIZE+j*int(STRUCT_SIZE) < int(dir.dinodeData.Size); j++ {
 			var curDir Dirent
 
-			//log.Debug("From ", j * STRUCT_SIZE, " to ", (j + 1) * STRUCT_SIZE, " data --> ", block[j * STRUCT_SIZE: (j + 1) * STRUCT_SIZE])
-			buf := bytes.NewBuffer(block[j*STRUCT_SIZE : (j+1)*STRUCT_SIZE])
+			log.Debug("From ", j*STRUCT_SIZE, " to ", (j+1)*STRUCT_SIZE)
+			buf := bytes.NewBuffer(buf.data[j*STRUCT_SIZE : (j+1)*STRUCT_SIZE])
 			binary.Read(buf, binary.LittleEndian, &curDir)
+			if curDir.FileType == FILETYPE_FREE {
+				// 如果已经被释放，跳过
+				log.Debug("Dir ", curDir.String(), " has been released.")
+				continue
+			}
 			log.Debug("Find dir: ", curDir.String())
 			retArray = append(retArray, &curDir)
 		}
 	}
+
+	//for i := 0; i <= int(dir.dinodeData.Nlink); i++ {
+	//	block := readBlockDIO(dir.dinodeData.Addrs[i])
+	//	log.Debugf("dir INode block %d, read block %d", IBLOCK(uint32(dir.num)), dir.dinodeData.Addrs[i])
+	//	//fmt.Println(block)
+	//	for j := 0; j*STRUCT_SIZE < BLOCK_SIZE && i*BLOCK_SIZE+j*int(STRUCT_SIZE) < int(dir.dinodeData.Size); j++ {
+	//		var curDir Dirent
+	//
+	//		//log.Debug("From ", j * STRUCT_SIZE, " to ", (j + 1) * STRUCT_SIZE, " data --> ", block[j * STRUCT_SIZE: (j + 1) * STRUCT_SIZE])
+	//		buf := bytes.NewBuffer(block[j*STRUCT_SIZE : (j+1)*STRUCT_SIZE])
+	//		binary.Read(buf, binary.LittleEndian, &curDir)
+	//		log.Debug("Find dir: ", curDir.String())
+	//		retArray = append(retArray, &curDir)
+	//	}
+	//}
 	return retArray
 }
 
