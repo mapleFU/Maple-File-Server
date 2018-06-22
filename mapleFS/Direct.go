@@ -1,6 +1,7 @@
 package mapleFS
 
 import (
+	"bytes"
 	"fmt"
 	log "github.com/sirupsen/logrus"
 	"strings"
@@ -65,9 +66,9 @@ func (dirNode *INode) DirIsEmpty() bool {
 func RmDir(dirNode *INode) bool {
 	checkDir(dirNode)
 	if dirNode.DirIsEmpty() {
-
-		unimpletedError()
-		//parent := iget(dir)
+		parent := IGet(Dirlookup(dirNode, []byte("..")))
+		dirunlink(parent, dirNode.num)
+		IFree(dirNode)
 		return true
 	} else {
 		return false
@@ -76,6 +77,7 @@ func RmDir(dirNode *INode) bool {
 
 // 对目录进行链接
 func dirlink(dir *INode, destName []byte, inum uint16, linkedFileType uint16) {
+	log.Info("Link ", string(destName), "  in ", dir.num)
 	if dir.dinodeData.FileType != FILETYPE_DIRECT {
 		log.Fatalf("Type of file error, INode is not dir in dirlink")
 	}
@@ -89,9 +91,38 @@ func dirlink(dir *INode, destName []byte, inum uint16, linkedFileType uint16) {
 	IAppend(dir, dirItem)
 }
 
+//
+func dirunlink(dir *INode, inum uint16) {
+
+	var readSize uint32 = 0
+	var index uint32 = 0
+	var readD Dirent
+	for buf := range dir.BufferStream() {
+		if readSize >= dir.dinodeData.Size {
+			break
+		}
+		for readSize-BLOCK_SIZE*index < BLOCK_SIZE {
+			readObject(buf.data[readSize-BLOCK_SIZE*index:readSize+uint32(DIRENT_SIZE)-BLOCK_SIZE*index], &readD)
+
+			if readD.INum == inum {
+				readD.INum = 0
+				writeObject(buf.data[readSize-BLOCK_SIZE*index:readSize+uint32(DIRENT_SIZE)-BLOCK_SIZE*index], readD)
+				brelse(buf)
+				//writeToBlockDIO(uint32(buf.sector), buf.data[:])
+				//var testD Dirent
+				//readObject(bget(buf.sector).data[readSize-BLOCK_SIZE*index:readSize+uint32(DIRENT_SIZE)-BLOCK_SIZE*index], &testD)
+				//log.Info("testD.INum:", testD.INum)
+				return
+			}
+			readSize += uint32(DIRENT_SIZE)
+		}
+		index++
+	}
+	fsyncINode(dir)
+}
+
 // 对目录取消链接
 func Dirunlink(dir *INode, destName []byte) bool {
-	unimpletedError()
 	if dir.dinodeData.FileType != FILETYPE_DIRECT {
 		log.Fatalf("Type of file error, INode is not dir in dirunlink")
 	}
@@ -100,13 +131,7 @@ func Dirunlink(dir *INode, destName []byte) bool {
 		return false
 	}
 	// 处理被链接的inode
-	unlinkINode := IGet(unlinkINum)
-	unlinkINode.dinodeData.Major--
-	if unlinkINode.dinodeData.Major == 0 {
-
-	} else {
-		fsyncINode(unlinkINode)
-	}
+	dirunlink(dir, uint16(unlinkINum))
 	return true
 }
 
@@ -131,6 +156,11 @@ func WalkDir(dir *INode) []*Dirent {
 			log.Debug("From ", j*STRUCT_SIZE, " to ", (j+1)*STRUCT_SIZE)
 			readObject(buf.data[j*STRUCT_SIZE:(j+1)*STRUCT_SIZE], &curDir)
 			log.Info("Find dir: ", curDir.String())
+			if curDir.INum == 0 && bytes.Compare(curDir.Name[:1], []byte(".")) != 0 && bytes.Compare(curDir.Name[:2], []byte("..")) != 0 {
+				// 废节点
+				log.Info("abandon:", string(curDir.Name[:]), " cmp1:", bytes.Compare(curDir.Name[:1], []byte(".")), ", cmp2:", bytes.Compare(curDir.Name[:2], []byte("..")))
+				continue
+			}
 			retArray = append(retArray, &curDir)
 
 		}
@@ -159,9 +189,6 @@ func Dirlookup(dir *INode, destName []byte) int {
 	checkDir(dir)
 	// TODO: we can optimize it
 	s := string(destName)
-	//if lSize > DIRSIZ {
-	//	return 0
-	//}
 	for _, d := range WalkDir(dir) {
 		// compare
 		log.Debug("Comparing ", d.DirName(), " with ", s)

@@ -58,6 +58,15 @@ func readObject(buf []byte, ptrObject interface{}) {
 	}
 }
 
+func writeObject(buf []byte, object interface{}) {
+	byteBuf := bytes.NewBuffer(make([]byte, 0))
+	err := binary.Write(byteBuf, binary.LittleEndian, object)
+	if err != nil {
+		panic(err)
+	}
+	copy(buf[:], byteBuf.Bytes())
+}
+
 // Block containing inode i
 // 给出 index, 描述出index block对应的位置，SUPERBLOCK == 1
 func IBLOCK(i uint32) uint32 {

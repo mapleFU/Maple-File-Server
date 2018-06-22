@@ -118,11 +118,18 @@
         data: function () {
             return {
                 name: "file-group",
-                file_list: [],
-                currentDir: "root",
+
                 size: 'sm',
                 toggle_none: null,
             }
+        },
+        computed: {
+            file_list: function () {
+                return this.$root.current_file_lists
+            },
+            currentDir: function () {
+                return this.$root.currentDir
+            },
         },
         name: 'file-group',
         created: function() {
@@ -157,9 +164,9 @@
 
 
 
-    Vue.component('click-list', {
+    Vue.component('click-node', {
         template: `
-            <div class="click-list">
+            <div class="click-node">
                 <v-bottom-sheet v-model="sheet">
                     <v-list-tile @click="" slot="activator">
                         <v-list-tile-action>
@@ -169,49 +176,250 @@
                             <v-list-tile-title>{{title}}</v-list-tile-title>
                         </v-list-tile-content>
                     </v-list-tile>
-                    <!--<v-btn slot="activator" color="purple" dark>{{title}}</v-btn>-->
                     <v-list>
-                      <v-subheader>{{ type }}</v-subheader>
-                      <v-list-tile
-                        v-for="tile in tiles"
-                        :key="tile.title"
-                        @click="sheet = false"
-                      >
+                        <v-subheader>{{ type }}</v-subheader>
+                        <v-list-tile
+                            v-for="tile in tiles"
+                            :key="tile.title"
+                            @click="sheet = false"
+                        >
 
-                    <v-list-tile-title>{{ tile.title }}</v-list-tile-title>
-                </v-list-tile>
-                </v-list>
+                            <v-list-tile-title @click="sheet = false; tile.func()">{{ tile.title }}</v-list-tile-title>
+                        </v-list-tile>
+                    </v-list>
                 </v-bottom-sheet>
-            </div>`
+
+                <v-dialog v-model="create_file" max-width="500px">
+                  <v-card>
+                    <v-card-title>
+                      创建文件
+                    </v-card-title>
+
+                    <v-text-field
+                        id="create-file"
+                        name="input-1"
+                        label="输入你要创建的文件名称"
+                        v-model="create_file_name"
+                    ></v-text-field>
+
+                    <v-card-actions>
+                      <v-btn color="primary" flat @click.stop="create_file=false">关闭</v-btn>
+                      <v-btn color="primary" flat @click.stop="create_file=false; createF()">创建文件</v-btn>
+                    </v-card-actions>
+                  </v-card>
+                </v-dialog>
+
+                <v-dialog v-model="create_dir" max-width="500px">
+                  <v-card>
+                    <v-card-title>
+                      创建目录
+                    </v-card-title>
+
+                    <v-text-field
+                        id="create-dir"
+                        name="input-1"
+                        label="输入你要创建的目录名称"
+                        v-model="create_dir_name"
+                    ></v-text-field>
+
+                    <v-card-actions>
+                      <v-btn color="primary" flat @click.stop="create_dir=false">Close</v-btn>
+                      <v-btn color="primary" flat @click.stop="createD">创建目录</v-btn>
+                    </v-card-actions>
+                  </v-card>
+                </v-dialog>
+
+
+
+                <v-dialog v-model="edit_file" max-width="500px">
+                  <v-card>
+                    <v-card-title>
+                      修改文件
+                    </v-card-title>
+
+                    <v-text-field
+                        id="create-dir"
+                        name="input-1"
+                        label="文本内容"
+
+                        v-model="editing_text"
+                        multi-line
+                    ></v-text-field>
+
+                    <v-card-actions>
+                      <v-btn color="primary" flat @click.stop="edit_file=false">Close</v-btn>
+                      <v-btn color="primary" flat @click.stop="saveF">保存文件</v-btn>
+                    </v-card-actions>
+                  </v-card>
+                </v-dialog>
+            </div>
+
+
+            `
         ,
         data: function () {
             return {
 //                title: this.title,
 
                 sheet: false,
+                create_file: false,
+                create_file_name: '',
+                create_dir: false,
+                create_dir_name: '',
+                edit_file: false,
+                editing_text: '',
                 tileSheets: {
                     'summary': [
-                        { title: '创建文件' },
-                        { title: '创建目录' },
-                        { title: '返回上一级目录' },
+                        { title: '创建文件' , func: ()=>{this.create_file = true}},
+                        { title: '创建目录' , func: ()=>{this.create_dir = true}},
+                        { title: '返回上一级目录' , func: ()=>{
+                                axios.get("/cd/..").then(
+                                        (response) => {
+                                            // console.log("success switch, ", this.$root.choosen.fileName)
+
+                                            this.$root.currentDir = this.$root.choosen.fileName
+                                            this.$root.choosen = null
+                                            this.$root.current_file_lists = this.$root.current_file_lists.slice(0,0)
+
+                                        }
+                                ).catch(
+                                        (error) => {
+                                            // 准备ALERT你妈
+                                            console.log(error)
+                                        }
+                                )
+                            }},
                     ],
                     'file': [
-                        {title: '删除该文件'},
-                        {title: '编辑该文件'},
-                        {title: '重命名该文件'},
-                        {title: '移动该文件'},
+                        {title: '删除该文件', func: ()=>{
+                                axios.delete("/files/" + this.$root.choosen.fileName).then(
+                                        (response) => {
+                                            this.$root.current_file_lists = this.$root.current_file_lists.filter(t=>t.fileName !== this.$root.choosen.fileName)
+                                            this.$root.choosen = null
+                                        }
+                                ).catch(
+                                        (error) => {
+                                            console.log(error)
+                                        }
+                                )
+                            }},
+                        {title: '编辑该文件', func: ()=>{
+
+                            axios.get("/files/" + this.$root.choosen.fileName).then(
+                                (response) => {
+                                    console.log(response.data.text)
+                                    this.editing_text = response.data.text
+                                    this.edit_file = true
+                                }
+                            ).catch(function (error) {
+                                console.log(error)
+                            })
+                        }},
+                        {title: '重命名该文件', func: ()=>{}},
+                        {title: '移动该文件', func: ()=>{}},
                     ],
                     'dict': [
-                        {title: '删除该目录(需要确保目录下没有文件)'},
-                        {title: '重命名该目录'}
+                        {title: '删除该目录(需要确保目录下没有文件)', func: ()=>{
+                                axios.delete("/dirs/" + this.$root.choosen.fileName).then(
+                                    (response) => {
+                                        this.$root.current_file_lists = this.$root.current_file_lists.filter(t=>t.fileName !== this.$root.choosen.fileName)
+                                        this.$root.choosen = null
+                                    }
+                                ).catch(
+                                    (error) => {
+                                        console.log(error)
+                                    }
+                                )
+                            }},
+                        {title: '重命名该目录', func: ()=>{}},
+                        {title: '切换到该目录', func: () => {
+                                // axios.ge
+                                axios.get("/cd/" + this.$root.choosen.fileName).then(
+                                    (response) => {
+                                        console.log("success switch, ", this.$root.choosen.fileName)
+
+                                        this.$root.currentDir = this.$root.choosen.fileName
+                                        this.$root.choosen = null
+                                        this.$root.current_file_lists = this.$root.current_file_lists.slice(0,0)
+
+                                    }
+                                ).catch(
+                                    (error) => {
+                                        // 准备ALERT你妈
+                                        console.log(error)
+                                    }
+                                )
+                            }},
                     ]
                 }
+            }
+        },
+        methods: {
+            createD:  function(event) {
+                axios.post("/dirs/" + this.create_dir_name).then(
+                    (response) => {
+                        this.$root.current_file_lists.push({
+                            fileName: this.create_dir_name,
+                            fileType: 'dict',
+                            fileINum: response.data.i_num,
+                        })
+                        this.create_dir_name = ''
+                    }
+                ).catch(
+                    (error) => {
+                        console.log(error)
+                        this.create_dir_name = ''
+                    }
+
+                )
+                this.create_dir = false
+                // TODO: 尖头函数，function 区别
+            }, createF: function() {
+                axios.post("/files/" + this.create_file_name).then(
+                        (response) => {
+                            this.$root.current_file_lists.push({
+                                fileName: this.create_file_name,
+                                fileType: 'file',
+                                fileINum: response.data.i_num,
+                            })
+                            this.create_file_name = ''
+                        }
+                ).catch(
+                        (error) => {
+                            console.log(error)
+                            this.create_file_name = ''
+                        }
+
+                )
+
+            }, saveF : function () {
+                let bodyFormData = new FormData();
+                bodyFormData.set("text", this.editing_text)
+                console.log(this.editing_text)
+                axios({
+                    method: 'put',
+                    url: "/files/" + this.$root.choosen.fileName,
+                    data: bodyFormData,
+                    config: { headers: {'Content-Type': 'multipart/form-data' }}
+                })
+                .then(
+                        (response) => {
+                            this.editing_text = ''
+                            this.edit_file = false
+                        }
+                ).catch(
+                        (error) => {
+                            console.log(error)
+                            // this.edit_file = false
+                        }
+
+                )
             }
         },
         props: {
             title: {
                 type: String,
-                default: 'nmsl',
+                default: 'summary',
             }, type: {
                 type: String,
                 default: 'summary',
@@ -219,26 +427,27 @@
         },
         computed: {
             tiles: function () {
-                if (this.$root.choosen === null)
-                    return 'summary'
-                return this.tileSheets[this.$root.choosen.fileType]
-            }
+                console.log(this.type)
+                // if (this.title === null)
+                //     return this.tileSheets['summary']
+                return this.tileSheets[this.type]
+            },
         }
     })
 
 
     Vue.component('click-file', {
-        template: `<click-list :title="'操作该文件'"></click-list>`,
+        template: `<click-node :title="'操作该文件'" :type="'file'" :key="'file'"></click-node>`,
     })
 
     Vue.component('click-dict', {
-        template: `<click-list :title="'操作该目录'"></click-list>`,
+        template: `<click-node :title="'操作该目录'" :type="'dict'" :key="'dict'"></click-node>`,
     })
 
     Vue.component('vue-fs-list', {
         template: `
             <v-list dense>
-                <click-list :title="'总操作'"></click-list>
+                <click-node :title="'总操作'" :key="'summary'"></click-node>
 
                 <component
                     v-if="this.$root.choosen !== null"
@@ -276,7 +485,8 @@
         data: () => ({
             drawer: true,
             choosen: null,
-
+            currentDir: 'root',
+            current_file_lists: [],
         }),
 
         props: {

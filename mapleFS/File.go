@@ -28,6 +28,7 @@ func CreateFile(parentDir *INode, fileName []byte) *INode {
 
 	// link dir
 	dirlink(parentDir, fileName, iNode.num, iNode.dinodeData.FileType)
+	fsyncINode(parentDir)
 	return iNode
 }
 
@@ -41,6 +42,7 @@ func AppendFile(fileINode *INode, newData []byte) {
 }
 
 func EditFile(fileINode *INode, newData []byte) {
+	log.Info("Edit with ", len(newData), " bytes data.")
 	if !fileINode.IsFile() {
 		log.Fatalf("File iNode is not file in EditFile")
 	}
@@ -54,32 +56,13 @@ func RemoveFileWithName(parentNode *INode, fileName []byte, newData []byte) bool
 		return false
 	}
 	iNode := IGet(inodeNum)
-	return RemoveFile(iNode)
+	return RemoveFile(parentNode, iNode)
 }
 
-func RemoveFile(fileINode *INode) bool {
-	if !fileINode.IsFile() {
-		// not a file
-		log.Infof("INode %d is not a iNode", fileINode.num)
-		return false
-	}
-	for buf := range fileINode.BufferStream() {
-		bfree(buf)
-	}
-	// TODO: impl it
-	for index, value := range fileINode.dinodeData.Addrs {
-		if value == 0 {
-			break
-		}
-		if index == NDIRECT {
-			buf := bget(uint16(value))
-			bzero(buf)
-			bfree(buf)
-		}
-		fileINode.dinodeData.Addrs[index] = 0
-	}
-	fsyncINode(fileINode)
-	return false
+func RemoveFile(currentDir *INode, fileINode *INode) bool {
+	dirunlink(currentDir, fileINode.num)
+	IFree(fileINode)
+	return true
 }
 
 func ReadFileFromINum(iNum uint16) []byte {
@@ -101,11 +84,13 @@ func ReadFile(fileINode *INode) []byte {
 	var cnt uint32 = 0
 	var endvalue uint32 = BLOCK_SIZE
 	for buf := range fileINode.BufferStream() {
+
 		cnt++
 		if cnt*BLOCK_SIZE > fileINode.dinodeData.Size {
-			endvalue = cnt*BLOCK_SIZE - fileINode.dinodeData.Size
+			endvalue = fileINode.dinodeData.Size - (cnt-1)*BLOCK_SIZE
 		}
 		retData = append(retData, buf.data[:endvalue]...)
+		log.Info("Read ", endvalue, " bytes.")
 	}
 	return retData
 }

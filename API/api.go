@@ -7,6 +7,8 @@ import (
 	"net/url"
 	//"log"
 	//log "github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus"
+	"strings"
 )
 
 type FileSchema struct {
@@ -24,8 +26,8 @@ func main() {
 
 	// 检查名称是否存在，如果存在折返回 false
 	checkNameExists := func(context *gin.Context) (bool, string) {
-		name, exists := context.GetPostForm("name")
-		if !exists {
+		name := context.Param("name")
+		if strings.Compare(name, "") == 0 {
 			context.JSON(422, map[string]string{
 				"error": "You lost 'name' argument in post /dirs/{name}",
 			})
@@ -44,12 +46,15 @@ func main() {
 
 	// 检查名称是否存在，如果不存在折返回 false
 	checkNameUnExists := func(context *gin.Context) (bool, int) {
-		name, exists := context.GetPostForm("name")
-		if !exists {
+
+		name := context.Param("name")
+		logrus.Info("Name is ", name, " in the requests.")
+		if strings.Compare(name, "") == 0 {
 			context.JSON(422, map[string]string{
 				"error": "You lost 'name' argument in post /dirs/{name}",
 			})
 			return false, -1
+
 		}
 		iNum := mapleFS.Dirlookup(currentDir, []byte(name))
 		if iNum == -1 {
@@ -63,6 +68,7 @@ func main() {
 	}
 
 	r.StaticFile("/index", "template/frontPage.html")
+	r.StaticFile("", "template/frontPage.html")
 
 	// list files
 	r.GET("/dirs", func(context *gin.Context) {
@@ -86,7 +92,7 @@ func main() {
 		fileName := context.Param("name")
 		iNum := mapleFS.Dirlookup(currentDir, []byte(fileName))
 		if iNum == -1 {
-			context.String(404, "Resource not found.")
+			context.JSON(404, nil)
 		}
 		var resultMap = map[string]string{
 			"text": string(mapleFS.ReadFileFromINum(uint16(iNum))),
@@ -95,10 +101,26 @@ func main() {
 		context.JSON(200, resultMap)
 	})
 
+	// cd
+	r.GET("/cd/:name", func(context *gin.Context) {
+		exists, iNum := checkNameUnExists(context)
+
+		if !exists {
+			return
+		} else {
+
+			currentDir = mapleFS.IGet(iNum)
+
+			context.JSON(204, nil)
+		}
+	})
+
 	// mkdir
 	r.POST("/dirs/:name", func(context *gin.Context) {
-		exists, name := checkNameExists(context)
-		if exists {
+
+		nonExists, name := checkNameExists(context)
+		logrus.Info("Create dir ", name)
+		if !nonExists {
 			return
 		}
 		// parse arguments now
@@ -116,8 +138,22 @@ func main() {
 	})
 
 	r.DELETE("/files/:name", func(context *gin.Context) {
+		exists, iNum := checkNameUnExists(context)
+		if !exists {
+			return
+		}
+		file := mapleFS.IGet(iNum)
+		if !file.IsFile() {
+			context.JSON(400, map[string]string{
+				"error": "file is not string",
+			})
+		}
+		logrus.Info("Delete file ", iNum)
 
+		mapleFS.RemoveFile(currentDir, file)
+		context.JSON(204, nil)
 	})
+
 	// rmdir
 	r.DELETE("/dirs/:name", func(context *gin.Context) {
 		exists, iNum := checkNameUnExists(context)
@@ -125,13 +161,14 @@ func main() {
 			return
 		}
 		mapleFS.RmDir(mapleFS.IGet(iNum))
-		context.JSON(404, nil)
+		context.JSON(204, nil)
 	})
 
 	// create file
 	r.POST("/files/:name", func(context *gin.Context) {
-		exists, name := checkNameExists(context)
-		if exists {
+		nonExists, name := checkNameExists(context)
+		logrus.Info("Create dir ", name)
+		if !nonExists {
 			return
 		}
 		iNode := mapleFS.CreateFile(currentDir, []byte(name))
@@ -149,19 +186,21 @@ func main() {
 
 	// synchronize file
 	r.PUT("/files/:name", func(context *gin.Context) {
-		exists, name := checkNameExists(context)
+
+		exists, iNode := checkNameUnExists(context)
 		if !exists {
 			return
 		}
-		iNode := mapleFS.Dirlookup(currentDir, []byte(name))
 		if iNode == -1 {
 			context.JSON(404, nil)
 		}
-		newData, exists := context.GetPostForm("data")
+		newData, exists := context.GetPostForm("text")
 		if !exists {
-			context.JSON(409, "data not exists")
-		}
 
+			context.JSON(409, "data not exists")
+			return
+		}
+		logrus.Info("newData:", newData)
 		mapleFS.EditFile(mapleFS.IGet(iNode), []byte(newData))
 		context.JSON(204, nil)
 	})

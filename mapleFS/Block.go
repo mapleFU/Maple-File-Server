@@ -73,10 +73,12 @@ func balloc() *buffer {
 
 // 完成读写
 func brelse(ptrBuf *buffer) {
-	if ptrBuf.statusFlag == BUF_DIRTY {
-		writeToBlockDIO(uint32(ptrBuf.sector), ptrBuf.data[:])
-	}
+	// TODO: really impl it
+	//if ptrBuf.statusFlag == BUF_DIRTY {
+	//	writeToBlockDIO(uint32(ptrBuf.sector), ptrBuf.data[:])
+	//}
 
+	writeToBlockDIO(uint32(ptrBuf.sector), ptrBuf.data[:])
 	ptrBuf.statusFlag = BUF_UNUSED
 	//ptrBuf.statusFlag &= ~BUF_BUSY
 }

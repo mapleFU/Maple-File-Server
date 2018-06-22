@@ -197,6 +197,7 @@ func IAppend(node *INode, dataStruct interface{}) {
 
 // 我总觉得这个函数会出事
 // 全部修改一个节点的信息
+// TODO: modify this
 func IModify(node *INode, newData []byte) {
 	var editedBytes uint32 = 0 // 编辑过的byte
 	var remainBytes = uint32(len(newData))
@@ -218,8 +219,8 @@ func IModify(node *INode, newData []byte) {
 				remainBytes = 0
 				// release node data
 				ifEnd = false
-
 			}
+			brelse(buf)
 		} else {
 			bfree(buf)
 		}
@@ -227,21 +228,29 @@ func IModify(node *INode, newData []byte) {
 	oldSize := node.dinodeData.Size
 	// 如果没有完成，iappend 会妥善修改内容
 	node.dinodeData.Size = editedBytes
+
+	// 内容过剩，处理NLink
+	currentUsed := editedBytes / BLOCK_SIZE
+	if editedBytes%BLOCK_SIZE != 0 {
+		currentUsed++
+	}
+	oldUsed := oldSize / BLOCK_SIZE
+	if oldSize%BLOCK_SIZE != 0 {
+		oldSize++
+	}
+
 	if !ifEnd {
+		// 使用
+		if currentUsed < NDIRECT {
+			node.dinodeData.Nlink = uint16(currentUsed)
+		} else {
+			node.dinodeData.Nlink = NDIRECT
+		}
 		// 没有结束，添加内容
-		for remainBytes > 0 {
+		if remainBytes > 0 {
 			IAppend(node, newData[editedBytes:])
 		}
 	} else {
-		// 内容过剩，处理NLink
-		currentUsed := editedBytes / BLOCK_SIZE
-		if editedBytes%BLOCK_SIZE != 0 {
-			currentUsed++
-		}
-		oldUsed := oldSize / BLOCK_SIZE
-		if oldSize%BLOCK_SIZE != 0 {
-			oldSize++
-		}
 		// 使用
 		node.dinodeData.Nlink = uint16(currentUsed)
 		if currentUsed >= NDIRECT {
@@ -301,4 +310,23 @@ func (node *INode) BufferStream() <-chan *buffer {
 		close(bufChan)
 	}()
 	return bufChan
+}
+
+// 删除inode所有的data, 链接
+func IFree(node *INode) {
+	node.dinodeData.Size = MAX_UINT32
+	for buf := range node.BufferStream() {
+		bfree(buf)
+	}
+	// TODO: impl it
+	for index, value := range node.dinodeData.Addrs {
+		if value == 0 {
+			break
+		}
+		if index == NDIRECT {
+			bfree(bget(uint16(value)))
+		}
+		node.dinodeData.Addrs[index] = 0
+	}
+	fsyncINode(node)
 }
