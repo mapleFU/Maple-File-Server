@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:v-bind="http://www.w3.org/1999/xhtml" xmlns:v-on="http://www.w3.org/1999/xhtml">
+<head>
+    <meta charset="UTF-8">
+    <title>mapleFS 用户应用</title>
+
+    <link href='https://fonts.googleapis.com/css?family=Roboto:300,400,500,700|Material+Icons' rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/vuetify/1.0.19/vuetify.min.css" rel="stylesheet">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, minimal-ui">
+</head>
+<body>
+<div id="app">
+    <v-app id="inspire" dark>
+        <v-navigation-drawer
+                clipped
+                fixed
+                v-model="drawer"
+                app
+        >
+            <v-list dense>
+                <vue-fs-list></vue-fs-list>
+            </v-list>
+
+        </v-navigation-drawer>
+        <v-toolbar app fixed clipped-left>
+            <v-toolbar-side-icon @click.stop="drawer = !drawer"></v-toolbar-side-icon>
+            <v-toolbar-title>mapleFS</v-toolbar-title>
+        </v-toolbar>
+        <v-content>
+
+            <v-container fluid>
+                <file-group></file-group>
+            </v-container>
+        </v-content>
+    </v-app>
+</div>
+
+
+
+<script src="https://cdn.bootcss.com/vue/2.5.17-beta.0/vue.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/vuetify/1.0.19/vuetify.js"></script>
+<script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+<script>
+    Vue.component('blog-post', {
+        props: ['title'],
+        template: '<h3>{{ title }}</h3>'
+    })
+
+    Vue.component('file', {
+        template: `
+            <div class="fs-file">
+                <!--<v-btn><img src="static/folder.png" height="50" width="50"/></v-btn>-->
+                <v-btn  @click="clickFile">
+                    <v-icon v-if="file.fileType==='file'">short_text</v-icon>
+                    <v-icon v-else>folder</v-icon>
+                    <p> {{file.fileName}} </p>
+                </v-btn>
+
+            </div>
+        `,
+        data: function () {
+            return {
+//                type: this.type,
+//                // test
+//                filename: this.filename,
+            }
+        },
+        computed: {
+            imageUri () {
+                if (this.type === "dict") {
+                    return "static/folder.png"
+                } else {
+                    return "static/text.png"
+                }
+            }
+        },
+        props: {
+            file: {
+                type: Object
+            },
+        },
+        methods: {
+            clickFile: function () {
+                if (this.$root.choosen === this.file) {
+                    this.$root.choosen = null
+                } else {
+                    this.$root.choosen = this.file
+                }
+
+            }
+        }
+//        name: 'file',
+    })
+
+    Vue.component('file-group', {
+        template: `
+            <div class="file-group">
+                <h2> {{ currentDir }} </h2>
+                <v-container fluid>
+                     <v-layout row wrap>
+                     <v-flex xs12 sm6 class="py-2">
+                          <v-btn-toggle v-model="toggle_none">
+                              <div v-for="(f, index) in file_list"
+                              :key="index"
+                              xs4>
+                                    <file v-bind:file="f"></file>
+
+                                      <!--<file v-if="f.fileType === 'file'"  v-bind:filename='f.fileName' :type="f.fileType" > </file>-->
+                                      <!--<file v-else v-bind:filename='f.fileName' :type="f.fileType"></file>-->
+
+                              </div>
+                          </v-btn-toggle>
+                        </v-flex>
+                      </v-layout>
+                </v-container>
+             </div>
+        `,
+        data: function () {
+            return {
+                name: "file-group",
+                file_list: [],
+                currentDir: "root",
+                size: 'sm',
+                toggle_none: null,
+            }
+        },
+        name: 'file-group',
+        created: function() {
+            let vm = this
+            console.log(this.file_list)
+            axios.get('/dirs').then(
+
+                // https://stackoverflow.com/questions/47549891/vue-js-cannot-read-property-push-of-undefined
+                (response) => {
+                    for (let msg_data of response.data) {
+                        if (msg_data.file_name !== '.' && msg_data.file_name !== '..') {
+                            let f_type;
+                            if (msg_data.file_type === 'DIRECT') {
+                                f_type = 'dict'
+                            } else {
+                                f_type = 'file'
+                            }
+                            vm.file_list.push({
+                                fileName: msg_data.file_name,
+                                fileType: f_type,
+                                fileINum: msg_data.i_num,
+                            })
+                        }
+
+                    }
+                }
+            ).catch(function (error) {
+                console.log(error);
+            })
+        }
+    })
+
+
+
+    Vue.component('click-list', {
+        template: `
+            <div class="click-list">
+                <v-bottom-sheet v-model="sheet">
+                    <v-list-tile @click="" slot="activator">
+                        <v-list-tile-action>
+                            <v-icon>dashboard</v-icon>
+                        </v-list-tile-action>
+                        <v-list-tile-content>
+                            <v-list-tile-title>{{title}}</v-list-tile-title>
+                        </v-list-tile-content>
+                    </v-list-tile>
+                    <!--<v-btn slot="activator" color="purple" dark>{{title}}</v-btn>-->
+                    <v-list>
+                      <v-subheader>{{ type }}</v-subheader>
+                      <v-list-tile
+                        v-for="tile in tiles"
+                        :key="tile.title"
+                        @click="sheet = false"
+                      >
+
+                    <v-list-tile-title>{{ tile.title }}</v-list-tile-title>
+                </v-list-tile>
+                </v-list>
+                </v-bottom-sheet>
+            </div>`
+        ,
+        data: function () {
+            return {
+//                title: this.title,
+
+                sheet: false,
+                tileSheets: {
+                    'summary': [
+                        { title: '创建文件' },
+                        { title: '创建目录' },
+                        { title: '返回上一级目录' },
+                    ],
+                    'file': [
+                        {title: '删除该文件'},
+                        {title: '编辑该文件'},
+                        {title: '重命名该文件'},
+                        {title: '移动该文件'},
+                    ],
+                    'dict': [
+                        {title: '删除该目录(需要确保目录下没有文件)'},
+                        {title: '重命名该目录'}
+                    ]
+                }
+            }
+        },
+        props: {
+            title: {
+                type: String,
+                default: 'nmsl',
+            }, type: {
+                type: String,
+                default: 'summary',
+            }
+        },
+        computed: {
+            tiles: function () {
+                if (this.$root.choosen === null)
+                    return 'summary'
+                return this.tileSheets[this.$root.choosen.fileType]
+            }
+        }
+    })
+
+
+    Vue.component('click-file', {
+        template: `<click-list :title="'操作该文件'"></click-list>`,
+    })
+
+    Vue.component('click-dict', {
+        template: `<click-list :title="'操作该目录'"></click-list>`,
+    })
+
+    Vue.component('vue-fs-list', {
+        template: `
+            <v-list dense>
+                <click-list :title="'总操作'"></click-list>
+
+                <component
+                    v-if="this.$root.choosen !== null"
+                    v-bind:is="currentListComponent"
+                    class="tab"
+                ></component>
+            </v-list>
+        `,
+        data: function () {
+            return {
+
+                lists: ['file', 'dict'],
+            }
+        },
+        computed: {
+            currentList: function () {
+                if (this.$root.choosen !== null) {
+                    if (this.$root.choosen.fileType === 'file') {
+                        return 'file'
+                    } else {
+                        return 'dict'
+                    }
+                } else {
+                    return null
+                }
+            },
+            currentListComponent: function () {
+                return 'click-' + this.currentList
+            }
+        }
+    })
+
+    new Vue({
+        el: '#app',
+        data: () => ({
+            drawer: true,
+            choosen: null,
+
+        }),
+
+        props: {
+            source: String
+        },
+
+    })
+
+</script>
+</body>
+</html>

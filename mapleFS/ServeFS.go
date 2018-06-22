@@ -6,13 +6,14 @@ import (
 )
 
 func Serve() {
-	initServe()
+	InitServe()
 	var rootDir INode
 	var curDir *INode
 	ReadRoot(&rootDir)
 	log.Println(rootDir.dinodeData)
-	WalkDir(&rootDir)
+
 	curDir = &rootDir
+	WalkDir(curDir)
 
 	shell := ishell.New()
 	shell.Println("Welcome to maple-xv6 fs! Press help to get information")
@@ -51,6 +52,7 @@ func Serve() {
 		Name: "ls",
 		Help: "List the directory",
 		Func: func(c *ishell.Context) {
+			log.Info("Ready to ls")
 			dirs := WalkDir(curDir)
 			for _, d := range dirs {
 				shell.Println(d.DirName(), " ", d.INum)

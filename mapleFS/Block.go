@@ -27,7 +27,7 @@ type buffer struct {
 var zeroBuf []byte
 
 func init() {
-	zeroBuf := make([]byte, BLOCK_SIZE)
+	zeroBuf = make([]byte, BLOCK_SIZE)
 }
 
 // 所有bget的对象都需要已经设置了bitmap
@@ -93,7 +93,7 @@ func bfree(ptrBuf *buffer) {
 	var blockBitMap BlockBitmap
 	copy(blockBitMap[:], readBlockDIO(uint32(bblock)))
 
-	pos := ptrBuf.sector % BPB
+	//pos := ptrBuf.sector % BPB
 	blockBitMap.setInvalid(bblock)
 	writeToBlockDIO(uint32(ptrBuf.sector), ptrBuf.data[:])
 }

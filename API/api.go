@@ -1,11 +1,12 @@
-package API
+package main
 
 import (
 	"fmt"
 	"github.com/gin-gonic/gin"
 	"github.com/mapleFU/TongjiFileLab/mapleFS"
-	"log"
 	"net/url"
+	//"log"
+	//log "github.com/sirupsen/logrus"
 )
 
 type FileSchema struct {
@@ -16,6 +17,7 @@ type FileSchema struct {
 
 func main() {
 	r := gin.Default()
+	mapleFS.InitServe()
 	var rootDir mapleFS.INode
 	mapleFS.ReadRoot(&rootDir)
 	currentDir := &rootDir
@@ -59,6 +61,8 @@ func main() {
 		}
 		return true, iNum
 	}
+
+	r.StaticFile("/index", "template/frontPage.html")
 
 	// list files
 	r.GET("/dirs", func(context *gin.Context) {

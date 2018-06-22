@@ -42,7 +42,7 @@ func initMkfs() {
 	log.SetLevel(log.InfoLevel)
 }
 
-func initServe() {
+func InitServe() {
 	var err error
 	fsfd, err = os.OpenFile(FS_IMG_FILE, os.O_RDWR, 0666)
 	if err != nil {

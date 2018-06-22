@@ -276,7 +276,8 @@ func (node *INode) BufferStream() <-chan *buffer {
 	go func() {
 
 		var index uint16
-		for index = 0; index < node.dinodeData.Nlink && index < NDIRECT; index++ {
+		for index = 0; index <= node.dinodeData.Nlink && index < NDIRECT; index++ {
+			log.Info("Send buf no:", index)
 			bufChan <- bget(uint16(node.dinodeData.Addrs[int(index)]))
 		}
 		if node.dinodeData.Nlink == NDIRECT {
@@ -296,8 +297,8 @@ func (node *INode) BufferStream() <-chan *buffer {
 					bufChan <- bget(uint16(readSecondIndex))
 				}
 			}
-			close(bufChan)
 		}
+		close(bufChan)
 	}()
 	return bufChan
 }

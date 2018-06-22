@@ -1,6 +1,6 @@
 package mapleFS
 
-import "log"
+import log "github.com/sirupsen/logrus"
 
 type FileType uint
 
@@ -47,16 +47,43 @@ func EditFile(fileINode *INode, newData []byte) {
 	IModify(fileINode, newData)
 }
 
-func RemoveFileWithName(parentNode *INode, fileName []byte, newData []byte) {
-	unimpletedError()
+func RemoveFileWithName(parentNode *INode, fileName []byte, newData []byte) bool {
+
+	inodeNum := Dirlookup(parentNode, fileName)
+	if inodeNum == -1 {
+		return false
+	}
+	iNode := IGet(inodeNum)
+	return RemoveFile(iNode)
 }
 
-func RemoveFile(fileINode *INode) {
-	unimpletedError()
+func RemoveFile(fileINode *INode) bool {
+	if !fileINode.IsFile() {
+		// not a file
+		log.Infof("INode %d is not a iNode", fileINode.num)
+		return false
+	}
+	for buf := range fileINode.BufferStream() {
+		bfree(buf)
+	}
+	// TODO: impl it
+	for index, value := range fileINode.dinodeData.Addrs {
+		if value == 0 {
+			break
+		}
+		if index == NDIRECT {
+			buf := bget(uint16(value))
+			bzero(buf)
+			bfree(buf)
+		}
+		fileINode.dinodeData.Addrs[index] = 0
+	}
+	fsyncINode(fileINode)
+	return false
 }
 
 func ReadFileFromINum(iNum uint16) []byte {
-	fINode := IGet(iNum)
+	fINode := IGet(int(iNum))
 	if fINode == nil {
 		return nil
 	} else {

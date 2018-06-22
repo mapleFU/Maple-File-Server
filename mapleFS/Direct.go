@@ -1,8 +1,6 @@
 package mapleFS
 
 import (
-	"bytes"
-	"encoding/binary"
 	"fmt"
 	log "github.com/sirupsen/logrus"
 	"strings"
@@ -125,21 +123,18 @@ func WalkDir(dir *INode) []*Dirent {
 
 	var retArray []*Dirent
 	// 直接按照Nlink 和SIZE读取
+	var index = 0
 	for buf := range dir.BufferStream() {
-		for j := 0; j*STRUCT_SIZE < BLOCK_SIZE && int(buf.sector)*BLOCK_SIZE+j*int(STRUCT_SIZE) < int(dir.dinodeData.Size); j++ {
+		for j := 0; j*STRUCT_SIZE < BLOCK_SIZE && index*BLOCK_SIZE+j*int(STRUCT_SIZE) < int(dir.dinodeData.Size); j++ {
 			var curDir Dirent
 
 			log.Debug("From ", j*STRUCT_SIZE, " to ", (j+1)*STRUCT_SIZE)
-			buf := bytes.NewBuffer(buf.data[j*STRUCT_SIZE : (j+1)*STRUCT_SIZE])
-			binary.Read(buf, binary.LittleEndian, &curDir)
-			if curDir.FileType == FILETYPE_FREE {
-				// 如果已经被释放，跳过
-				log.Debug("Dir ", curDir.String(), " has been released.")
-				continue
-			}
-			log.Debug("Find dir: ", curDir.String())
+			readObject(buf.data[j*STRUCT_SIZE:(j+1)*STRUCT_SIZE], &curDir)
+			log.Info("Find dir: ", curDir.String())
 			retArray = append(retArray, &curDir)
+
 		}
+		index++
 	}
 
 	//for i := 0; i <= int(dir.dinodeData.Nlink); i++ {
