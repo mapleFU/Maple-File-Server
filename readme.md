@@ -1,38 +1,38 @@
 # 文件系统模拟
 
-## Requirements
+## 实现的接口
 
-`create` `open` `close`  `write` `read` `unlink` 
+* `ls`
+* `mkdir`
+* `touch`
+* `pwd`
+* `cd`
+* `rm`
+* `rmdir`
 
-`cd` `pwd` `mkdir` `rmdir`  
-
-## Definitions
-
-### Blocks 
-
-内存块对应。这里实现了对应的buffer，并且在文件中能够根据 `index`寻找到对应的block区域。这里使用的是寻找对应的buffer。
-
-### Block Groups 
+## 基本的操作和使用
 
 
 
-### Dictories 
+## 架构：
 
+这里才用了自底向上的实现，上一层调用下一层或者别的层次提供的数据结构和接口。以下是关键的名词和接口的层次。
 
+### BasicIO
 
-### Inodes 
+基础的给程序提供`I/O`的包。
 
+### SuperBlock
 
+```go
+type superblock struct {
+	Size uint32		// size of blocks
+	Nblocks uint32	// number of datablocks
+	Ninodes uint32	// number of inodes
+}
+```
 
-### Superblocks
-
-
-
-### Symbol links
-
-
-
-## Describe
+`Superblock` 作为程序的超级块，储存着这一部分的文件系统的基本的信息。
 
 ### IDE Driver 层
 
@@ -48,22 +48,76 @@
 
 
 
-| 区域 | 功能 |
-| :---: | :--: |
-| 0 | unused |
-| 1 | super block |
-| 2 | log for transactions |
-| x | inodes |
-| y | block in use bitmap |
-| z | file/dir content blocks |
+| 区域 |                         功能                         |
+| :--: | :--------------------------------------------------: |
+|  0   | unused\(本来是启动程序的扇区，但是没有实现对应功能\) |
+|  1   |                     super block                      |
+|  2   |   log for transactions\(程序对应的log, 暂未实现\)    |
+|  x   |                        inodes                        |
+|  y   |                 block in use bitmap                  |
+|  z   |               file/dir content blocks                |
 
 我们可以对照代码方面的定义：
 
-
-
 ```go
-const ROOT_INODE_NUM = 1
+const (
+	// 总共大小
+	SIZE = 1024
+	// INODES 的数量
+	NINODES = 200
+	// BLOCKS 的数量
+	NBLOCKS = 995
+)
+
+const ROOT_INODE_NUM uint32 = 0
 const BLOCK_SIZE = 512
+
+// 直接的指针
+const (
+	// 直接指针的数目
+	NDIRECT = 12
+	// 多级索引的最大上限。因为这里只有一个块作为二级索引
+	NINDIRECT = BLOCK_SIZE / unsafe.Sizeof(uint32(0))
+	// 最多的文件指针？
+	MAX_FILE = NDIRECT + NINDIRECT
+)
+
+const (
+	FILETYPE_FREE = iota
+	FILETYPE_FILE
+	FILETYPE_DIRECT
+)
+
+// TODO:弄出一个实际的块...? 这个安全吗？
+// 一个BLOCK能存储的INODE的数目
+const IPB = BLOCK_SIZE / unsafe.Sizeof(Dinode{})
+
+// Bitmap bits per block
+const BPB = BLOCK_SIZE * 8
+
+// BITMAP 占有的 BLOCK 的量
+const BITMAP_BLOCK_NUM uint32 = SIZE/(BLOCK_SIZE*8) + 1
+
+// 目录对应的 bytes
+const DIRSIZ = 28
+
+const MAX_UINT16 = 65535
+
+type bufferStatus uint8
+
+const (
+	BUF_BUSY   bufferStatus = 1 << iota // buffer is locked by some process
+	BUF_VALID  bufferStatus = 1 << iota // buffer has been read from disk
+	BUF_DIRTY  bufferStatus = 1 << iota // buffer needs to be written to disk
+	BUF_UNUSED bufferStatus = 1 << iota
+)
+
+const DIRENT_SIZE = uint(unsafe.Sizeof(Dirent{}))
+
+const MAX_UINT32 = 4294967295
+
+const bitblocks uint32 = SIZE/(BLOCK_SIZE*8) + 1
+const usedblocks = NINODES/uint32(IPB) + 3 + bitblocks
 ```
 
 超级块：
@@ -77,56 +131,6 @@ type superblock struct {
 ```
 
 日志系统：暂无
-
-`inodes`:
-
-系统的`inode`
-
-```go
-const (
-	FREE = iota
-	FILE
-	DIRECT
-)
-
-type dinode struct {
-	fileType uint8	// 文件的类型
-	nlink uint8		// link 链接的数量
-
-	major, minor uint8	// 对应的major minor, 我这里好像没啥用
-	size uint32		// size of file
-	addrs [NDIRECT + 1]uint8	// 直接指向的数据块
-	// 多级数据块 -- > 等会儿直接用树组织吧
-}
-
-// 一个BLOCK能存储的INODE的数目
-const IPB = BLOCK_SIZE / unsafe.Sizeof(dinode{})
-
-// 给出 index, 描述出index block对应的位置
-func IBLOCK(i uint8) uint8 {
-	return i / uint8(IPB) + 2
-}
-
-// Bitmap bits per block, 每块需要对应一个长度为 BLOCK_SIZE * uint8 的字段
-const BPB  = BLOCK_SIZE * 8
-
-// 这个应该表示的是bitmap block 对应的位置, B表示的是第几个块, 对应的是哪个位置
-func BBLOCK(b, ninodes uint8) uint8 {
-	// 本来应该是 + 2, 但是实际上这里至少有一个block会被INODES TABLE占用，所以 + 3
-	return uint8(b / BPB + ninodes / uint8(IPB) + 3)
-}
-
-// 目录信息
-const DIRSIZ = 14
- 
-type dirent struct {
-	inum uint8
-	// 是不是到时候改回rune比较好
-	name [DIRSIZ]byte
-}
-```
-
-
 
 ### Block Buffer 层
 
@@ -147,42 +151,122 @@ type dirent struct {
 
 `brelse`  将缓冲区移动到链表头部，清除`B_BUSY` 
 
-
-
-### 数据结构
-
-同时对于内存中的`inode` 有这样的描述
+block在文件系统还是对应`sector`的一个固定大小的块，这里采用数据结构`buffer`来为访问具体的`block`提供接口和抽象。
 
 ```go
-type inode struct {
-	num uint32	// 对应的序号
-	ref int	// 引用计数
-	lock sync.Mutex	// 内容的锁，暂时不会用到
-	valid int32	// 是否在disk中被读出
+/**
+disk blocks
+  most o/s use blocks of multiple sectors, e.g. 4 KB blocks = 8 sectors
+  to reduce book-keeping and seek overheads
+  xv6 uses single-sector blocks for simplicity
 
-	// copy of disk inode, 指向真实的block信息
-	dinodeData dinode
+dev/sector 应该是单一指定的位置？
+*/
+type buffer struct {
+	statusFlag bufferStatus
+	// dev, sector 是对应的设备、扇区管理
+	dev    uint8  // 设备
+	sector uint16 // 扇区 这个程序里面表示所存储的块
+
+	prev, next, qnext *buffer
+	// 对应的数据，有着固定的大小
+	data [BLOCK_SIZE]byte
 }
+
 ```
 
-
-
-### 块分配层
+这里`buffer`标定了 `block`的数据块，信息。用`statusFlag`表示这块`buffer`是否读写。`buffer`包抽象了具体的位置，提供了这些抽象的信息。
 
 根据空闲块位图，分配新的块。
 
 `balloc` 分配新的块 `bfree` 释放。 先用`readsb`从磁盘读 `superblock`, `balloc`寻找对应的块，同时清空对应的位。
 
-### inode 层
+### INode/Dinode 层
 
 `inode`是 `dinode` 的记录 `ialloc`  申请新的i节点。 `iget` 会遍历 `inode`缓存寻找
 
 `bmap` 会返回对应序号 `inode` 的内容
 
+在操作系统中，dinode` 表示操作系统对文件的标示，一个文件只存在一个`inode`, `inode`用 `inum`这个序号来表示。一下，同时表示又正确的文件的的大小。`mapleFS`中 `dinode` 表示磁盘上的 `inode`, 在文件系统中它的位置是不言自明的。
+
+```go
+type Dinode struct {
+	FileType uint16 // 文件的类型
+	Nlink    uint16 // link 链接的数量
+
+	Major, Minor uint16              // 对应的major minor, 我这里好像没啥用...好吧我他妈把MAJOR当成LINK链接好了,MINOR当成-s link好了
+	Size         uint32              // size of file
+	Addrs        [NDIRECT + 1]uint32 // 直接指向的数据块，最后一个+1对应的是二级索引
+
+}
+```
+
+`inode`是内存中的 `inode`. 保存了`dinode`, 我们的外部操作都是针对inode
+
+```go
+/**
+inode is dinode in memory
+
+    FS records file info in an "inode" on disk
+    FS refers to inode with i-number (internal version of FD)
+    inode must have link count (tells us when to free)
+    inode must have count of open FDs
+    inode deallocation deferred until last link and FD are gone
+
+*/
+type INode struct {
+	num   uint16     // 对应的序号
+	ref   int        // 引用计数
+	lock  sync.Mutex // 内容的锁，暂时不会用到
+	valid int32      // 是否在disk中被读出
+
+	// copy of disk inode, 指向真实的block信息
+	dinodeData Dinode
+}
+```
+
 ### 目录层
 
 目录的 `inode`类型是 `T_DIR`, `dirlookup` `dirlink` `dirunlink` 操作目录
 
+### Dirent
+
+```go
+// 存储目录项的条目
+// TODO: 搞清楚导入导出的机制
+type Dirent struct {
+	INum uint16
+	// 是不是到时候改回rune比较好
+	Name [DIRSIZ]byte
+	// 文件的类型
+	FileType uint16
+}
+
+```
+
+目录项，对应的目录的操作中，会像目录中添加目录项。每个目录项的大小是*32bytes*, 每个block能存储固定的dirent作为目录的记录。
+
 ### 文件描述符／系统调用层
 
 `sys_link` `sys_unlink` `nameiparent` `dirlookup`
+
+### File
+
+```go
+const (
+	FD_NONE  = iota
+	FD_PIPE  = iota
+	FD_INODE = iota
+)
+
+type FsFile struct {
+	ref      int // ref cnt
+	inodePtr *INode
+
+	readable  bool
+	writeable bool
+}
+
+```
+
+*FIle*, 作为系统的文件，同样用`inode`表示，可以往里面同步内容，添加信息。

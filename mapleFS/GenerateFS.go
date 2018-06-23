@@ -9,7 +9,7 @@ import (
 )
 
 func GenerateFs() {
-	initMkfs()
+	InitMkfs()
 	defer fsfd.Close()
 
 	sb := superblock{xuint32(1024), xuint32(200), xuint32(995)}

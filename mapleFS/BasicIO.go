@@ -31,7 +31,8 @@ func xuint32(x uint32) uint32 {
 // 真实指向文件的指针
 var fsfd *os.File
 
-func initMkfs() {
+// 初始化，为创建／初始化文件系统打开镜像文件，设置日志
+func InitMkfs() {
 	var err error
 	// 基本的信息
 	fsfd, err = os.OpenFile(FS_IMG_FILE, os.O_RDWR|os.O_CREATE|os.O_TRUNC,
@@ -42,6 +43,7 @@ func initMkfs() {
 	log.SetLevel(log.InfoLevel)
 }
 
+// 初始化，为使用读写文件系统打开镜像文件，设置日志
 func InitServe() {
 	var err error
 	fsfd, err = os.OpenFile(FS_IMG_FILE, os.O_RDWR, 0666)
@@ -51,6 +53,7 @@ func InitServe() {
 	log.SetLevel(log.InfoLevel)
 }
 
+// 从二进制切片中读取对象
 func readObject(buf []byte, ptrObject interface{}) {
 	err := binary.Read(bytes.NewBuffer(buf), binary.LittleEndian, ptrObject)
 	if err != nil {
@@ -58,6 +61,7 @@ func readObject(buf []byte, ptrObject interface{}) {
 	}
 }
 
+// 往二进制切片中写入等长的对象
 func writeObject(buf []byte, object interface{}) {
 	byteBuf := bytes.NewBuffer(make([]byte, 0))
 	err := binary.Write(byteBuf, binary.LittleEndian, object)
@@ -96,6 +100,7 @@ func writeToBlockDIO(blockNum uint32, bdata []byte) {
 	}
 }
 
+// 读取文件中的一整个块
 func readBlockDIO(blockNum uint32) []byte {
 	data := make([]byte, BLOCK_SIZE)
 	readSize, err := fsfd.ReadAt(data, int64(blockNum*BLOCK_SIZE))
@@ -130,6 +135,7 @@ func fsyncINode(node *INode) {
 	//thisINode := dinode.toINode()
 }
 
+// 向文件系统写入bytes
 func writeFS(buf []byte, sec uint32) {
 	// 直接写入 block
 	off, err := fsfd.Seek(int64(BLOCK_SIZE)*int64(sec), 0)

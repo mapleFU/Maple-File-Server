@@ -334,8 +334,24 @@
         },
         methods: {
             createD:  function(event) {
-                this.$root.ls()
+
                 this.create_dir = false
+                axios.post("/dirs/" + this.create_dir_name).then(
+                        (response) => {
+                            this.$root.current_file_lists.push({
+                                fileName: this.create_dir_name,
+                                fileType: 'dict',
+                                fileINum: response.data.i_num,
+                            })
+                            this.create_file_name = ''
+                        }
+                ).catch(
+                        (error) => {
+                            console.log(error)
+                            this.create_dir_name = ''
+                        }
+
+                )
                 // TODO: 尖头函数，function 区别
             }, createF: function() {
                 axios.post("/files/" + this.create_file_name).then(
@@ -479,6 +495,9 @@
                     }
                 ).catch((reason => console.log(reason)))
             },
+            rmdir: function () {
+                
+            }
         }
     })
 

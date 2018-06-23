@@ -72,7 +72,6 @@ func IAlloc() *INode {
 			var readDi Dinode
 			curBase := innerInum * INODE_LENGTH // 目前这一个的基址
 			readObject(inodeBlocks[curBase:(innerInum+1)*INODE_LENGTH], &readDi)
-			//log.Info(readDi)
 			// not unequal
 			if readDi.Size == MAX_UINT32 {
 				// TODO: impletes this
@@ -87,7 +86,6 @@ func IAlloc() *INode {
 					panic(err)
 				}
 
-				log.Info("Debug: size ", curNode.dinodeData.Size)
 				copy(inodeBlocks[curBase:(innerInum+1)*INODE_LENGTH], buf.Bytes())
 				writeToBlockDIO(i, inodeBlocks)
 
@@ -138,13 +136,39 @@ func IAddblock(node *INode) {
 		node.dinodeData.Addrs[node.dinodeData.Nlink] = uint32(blockBuf.sector)
 		log.Infof("Create block with sector %d", blockBuf.sector)
 	} else {
-		unimpletedError()
+		var blockBuf *buffer
+		if node.dinodeData.Addrs[NDIRECT] == 0 {
+			// 需要申请
+			blockBuf = balloc()
+			node.dinodeData.Addrs[node.dinodeData.Nlink] = uint32(blockBuf.sector)
+		} else {
+			blockBuf = bget(uint16(node.dinodeData.Addrs[NDIRECT]))
+		}
+		var currentBlock uint32
+		var currentRead = 0
+		const U32SIZE = int(unsafe.Sizeof(uint32(0)))
+		for currentRead < BLOCK_SIZE/U32SIZE {
+			readObject(blockBuf.data[currentRead*U32SIZE:(currentRead+1)*U32SIZE], &currentBlock)
+			if currentRead == 0 {
+				currentBlock = uint32(balloc().sector)
+				writeObject(blockBuf.data[currentRead*U32SIZE:(currentRead+1)*U32SIZE], currentBlock)
+				brelse(blockBuf)
+				return
+			}
+			currentRead++
+		}
+
+		log.Fatalf("None enough blocks")
+		//secondBuf := balloc()
+		//node.dinodeData.Addrs[NDIRECT] = uint32(secondBuf.sector)
 	}
 }
 
+// TODO: make it clear
 // 向inode中插入数据
 func IAppend(node *INode, dataStruct interface{}) {
 	//var newIndex uint16
+	// datas 是真正的后续使用数据对象，byteData 是一个表示临时对象bytes的变量
 	var datas, byteData []byte
 	byteData, ok := dataStruct.([]byte)
 	if ok {
@@ -162,7 +186,7 @@ func IAppend(node *INode, dataStruct interface{}) {
 	if node.dinodeData.Nlink < NDIRECT {
 		linkAddr := node.dinodeData.Addrs[node.dinodeData.Nlink]
 		if linkAddr == 0 {
-			// 需要申请空间
+			// 如果对应的序号上没有真实链接，需要申请空间
 			IAddblock(node)
 			linkAddr = node.dinodeData.Addrs[node.dinodeData.Nlink]
 		}
@@ -190,7 +214,68 @@ func IAppend(node *INode, dataStruct interface{}) {
 	} else {
 		// TODO: 实现间接索引
 		// 间接 暂时没有实现
-		unimpletedError()
+		if node.dinodeData.Addrs[NDIRECT] == 0 {
+			// 申请
+			node.dinodeData.Addrs[NDIRECT] = uint32(balloc().sector)
+		}
+
+		secondBuf := bget(uint16(node.dinodeData.Addrs[NDIRECT]))
+		blockBios := (node.dinodeData.Size - NDIRECT*BLOCK_SIZE) / BLOCK_SIZE
+		dataBios := node.dinodeData.Size - (NDIRECT+blockBios)*BLOCK_SIZE
+
+		var currentSector uint32
+		readObject(secondBuf.data[blockBios*4:(blockBios+1)*4], &currentSector)
+		var secondDataBuf *buffer
+		if currentSector == 0 {
+			secondDataBuf = balloc()
+			// 回写, 表示这块区段占有了这块空间
+			writeObject(secondBuf.data[blockBios*4:(blockBios+1)*4], secondDataBuf.sector)
+		} else {
+			// 最后一个还有用，我们能够读取这块空间
+			secondDataBuf = bget(uint16(currentSector))
+		}
+
+		var remainDatas = len(datas)
+		for remainDatas > 0 {
+			if int(dataBios)+len(datas) < BLOCK_SIZE {
+				copy(secondDataBuf.data[dataBios:int(dataBios)+len(datas)], datas)
+				node.dinodeData.Size += uint32(len(datas))
+				brelse(secondDataBuf)
+				remainDatas = 0
+			} else if int(dataBios)+len(datas) == BLOCK_SIZE {
+				copy(secondDataBuf.data[dataBios:int(dataBios)+len(datas)], datas)
+				node.dinodeData.Size += uint32(len(datas))
+				//node.dinodeData.Nlink++ // 添加指针计数
+				brelse(secondDataBuf)
+				remainDatas = 0
+			} else {
+				// 部分拷贝
+				copy(secondDataBuf.data[dataBios:BLOCK_SIZE], datas[0:BLOCK_SIZE-dataBios])
+				node.dinodeData.Size += uint32(BLOCK_SIZE - dataBios)
+				//node.dinodeData.Nlink++
+
+				// 继续 append, 调用别的部分
+				remainDatas -= int(BLOCK_SIZE - dataBios)
+				blockBios++
+				if blockBios == BLOCK_SIZE/uint32(unsafe.Sizeof(uint32(0))) {
+					log.Fatalf("IAppend out of max size file.")
+				}
+				// 存储之前申请过的
+				brelse(secondDataBuf)
+				// 继续申请
+				secondDataBuf = balloc()
+				// 回写到主块中
+				writeObject(secondBuf.data[blockBios*4:(blockBios+1)*4], secondDataBuf.sector)
+				datas = datas[BLOCK_SIZE-dataBios:]
+				dataBios = 0
+
+				//IAppend(node, datas[BLOCK_SIZE-dataBios:])
+			}
+
+		}
+
+		brelse(secondBuf)
+		fsyncINode(node)
 	}
 
 }
@@ -285,24 +370,24 @@ func (node *INode) BufferStream() <-chan *buffer {
 	go func() {
 
 		var index uint16
-		for index = 0; index <= node.dinodeData.Nlink && index < NDIRECT; index++ {
-			log.Info("Send buf no:", index)
+		for index = 0; index <= node.dinodeData.Nlink && index < NDIRECT && node.dinodeData.Addrs[index] != 0; index++ {
 			bufChan <- bget(uint16(node.dinodeData.Addrs[int(index)]))
 		}
-		if node.dinodeData.Nlink == NDIRECT {
+		if node.dinodeData.Nlink == NDIRECT && node.dinodeData.Addrs[NDIRECT] != 0 {
+
 			// 读取
 			secondBuf := bget(uint16(node.dinodeData.Addrs[NDIRECT]))
 			// 里面的元素数目
 			nodeSize := int(unsafe.Sizeof(uint32(0)))
 			// 不可能等于0，所以一个个读
 			var readSecondIndex uint32 // 读出来的索引地址
-			var secIndex int           // 次级对应的index
+			var secIndex = 0           // 次级对应的index
 			for secIndex < BLOCK_SIZE/nodeSize {
 				readObject(secondBuf.data[secIndex*nodeSize:(secIndex+1)*nodeSize], &readSecondIndex)
 				if readSecondIndex == 0 {
-					close(bufChan)
-					return
+					break
 				} else {
+					secIndex++
 					bufChan <- bget(uint16(readSecondIndex))
 				}
 			}
