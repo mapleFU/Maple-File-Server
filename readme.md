@@ -16,29 +16,29 @@
 
 系统基本的使用可以在`web` 服务器上进行，访问可以得到页面：
 
-![基础界面2](github.com/mapleFU/TongjiFileLab/doc/基础界面2.png)
+![基础界面2](./doc/基础界面2.png)
 
 你可以选择创建文件和目录，或者回到上一级目录\(如果你所在的是根目录，那么你可以点击，但是不会去往新的地方。\)
 
-![目录操作](github.com/mapleFU/TongjiFileLab/doc/目录操作.png)
+![目录操作](./doc/目录操作.png)
 
 你可以选择创建文件／目录
 
-![创建目录](github.com/mapleFU/TongjiFileLab/doc/创建目录.png)
+![创建目录](./doc/创建目录.png)
 
 对于创建的目录，你可以选择删除：
 
-![删除目录](github.com/mapleFU/TongjiFileLab/doc/删除目录.png)
+![删除目录](./doc/删除目录.png)
 
 可以选择进入：
 
-![目录操作](github.com/mapleFU/TongjiFileLab/doc/目录操作.png)
+![目录操作](./doc/目录操作.png)
 
-![目录内1](github.com/mapleFU/TongjiFileLab/doc/目录内1.png)
+![目录内1](./doc/目录内1.png)
 
 当然，可以建立多级的目录，只要总文件不超过这里的限制(暂定为200):
 
-![目录内2](github.com/mapleFU/TongjiFileLab/doc/目录内2.png)
+![目录内2](./doc/目录内2.png)
 
 你可以选择“返回上一级目录”返回出来
 
@@ -46,7 +46,7 @@
 
 这里存放大小140k的Raft论文：
 
-![文件](github.com/mapleFU/TongjiFileLab/doc/文件.png)
+![文件](./doc/文件.png)
 
 保存成功后，我们再次打开，仍然能看到这篇论文。
 
