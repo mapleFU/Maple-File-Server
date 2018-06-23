@@ -282,7 +282,6 @@ func IAppend(node *INode, dataStruct interface{}) {
 
 // 我总觉得这个函数会出事
 // 全部修改一个节点的信息
-// TODO: modify this
 func IModify(node *INode, newData []byte) {
 	var editedBytes uint32 = 0 // 编辑过的byte
 	var remainBytes = uint32(len(newData))

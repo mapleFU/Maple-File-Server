@@ -14,7 +14,7 @@ const (
 )
 
 const ROOT_INODE_NUM uint32 = 0
-const BLOCK_SIZE = 512
+const BLOCK_SIZE = 1024
 
 // 直接的指针
 const (

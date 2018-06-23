@@ -1,5 +1,7 @@
 # 文件系统模拟
 
+文件系统模拟采用了类似 `xv6`的实现，但是没有实现同步(控制并发)操作和日志系统。
+
 ## 实现的接口
 
 * `ls`
@@ -12,7 +14,43 @@
 
 ## 基本的操作和使用
 
+系统基本的使用可以在`web` 服务器上进行，访问可以得到页面：
 
+![基础界面2](github.com/mapleFU/TongjiFileLab/doc/基础界面2.png)
+
+你可以选择创建文件和目录，或者回到上一级目录\(如果你所在的是根目录，那么你可以点击，但是不会去往新的地方。\)
+
+![目录操作](github.com/mapleFU/TongjiFileLab/doc/目录操作.png)
+
+你可以选择创建文件／目录
+
+![创建目录](github.com/mapleFU/TongjiFileLab/doc/创建目录.png)
+
+对于创建的目录，你可以选择删除：
+
+![删除目录](github.com/mapleFU/TongjiFileLab/doc/删除目录.png)
+
+可以选择进入：
+
+![目录操作](github.com/mapleFU/TongjiFileLab/doc/目录操作.png)
+
+![目录内1](github.com/mapleFU/TongjiFileLab/doc/目录内1.png)
+
+当然，可以建立多级的目录，只要总文件不超过这里的限制(暂定为200):
+
+![目录内2](github.com/mapleFU/TongjiFileLab/doc/目录内2.png)
+
+你可以选择“返回上一级目录”返回出来
+
+对于文件，你可以创建文件。这里文件最大容量是(12 + 1 * 1024 / (32/8) ) k, 即268k。 大于12k的需要间接索引。
+
+这里存放大小140k的Raft论文：
+
+![文件](github.com/mapleFU/TongjiFileLab/doc/文件.png)
+
+保存成功后，我们再次打开，仍然能看到这篇论文。
+
+现在我们关闭服务器并重新打开，仍然能看到以上的文件存在。
 
 ## 架构：
 
@@ -270,3 +308,136 @@ type FsFile struct {
 ```
 
 *FIle*, 作为系统的文件，同样用`inode`表示，可以往里面同步内容，添加信息。
+
+
+
+## 关键实现细节
+
+### 多级文件读写
+
+多级文件的读是在`INode` 层完成的，这里封装了 `buffer` 完成了对迭代器的操作，每次生产这个文件占有的`buffer`, 具体内容由外界的文件／目录来读取信息，完成操作。
+
+```go
+func (node *INode) BufferStream() <-chan *buffer {
+	bufChan := make(chan *buffer)
+	// 向 chan 发送信息
+	go func() {
+
+		var index uint16
+		for index = 0; index <= node.dinodeData.Nlink && index < NDIRECT && node.dinodeData.Addrs[index] != 0; index++ {
+			bufChan <- bget(uint16(node.dinodeData.Addrs[int(index)]))
+		}
+		if node.dinodeData.Nlink == NDIRECT && node.dinodeData.Addrs[NDIRECT] != 0 {
+
+			// 读取
+			secondBuf := bget(uint16(node.dinodeData.Addrs[NDIRECT]))
+			// 里面的元素数目
+			nodeSize := int(unsafe.Sizeof(uint32(0)))
+			// 不可能等于0，所以一个个读
+			var readSecondIndex uint32 // 读出来的索引地址
+			var secIndex = 0           // 次级对应的index
+			for secIndex < BLOCK_SIZE/nodeSize {
+				readObject(secondBuf.data[secIndex*nodeSize:(secIndex+1)*nodeSize], &readSecondIndex)
+				if readSecondIndex == 0 {
+					break
+				} else {
+					secIndex++
+					bufChan <- bget(uint16(readSecondIndex))
+				}
+			}
+		}
+		close(bufChan)
+	}()
+	return bufChan
+}
+```
+
+写入文件采用 `IAppend` `IModify`接口，往文件中写入内容，先读取修改，占用已经使用的块，释放多余的块，并处理`size`, `nlink`等接口。
+
+```go
+// 我总觉得这个函数会出事
+// 全部修改一个节点的信息
+func IModify(node *INode, newData []byte) {
+	var editedBytes uint32 = 0 // 编辑过的byte
+	var remainBytes = uint32(len(newData))
+	var ifEnd = false // 读写是否停止
+	var cnt = 0
+	// 先用掉已经申请的块
+	for buf := range node.BufferStream() {
+		if !ifEnd {
+			cnt++
+			// 先编辑存在的buf
+			if remainBytes > BLOCK_SIZE {
+				copy(buf.data[:], newData[editedBytes:editedBytes+BLOCK_SIZE])
+				editedBytes += BLOCK_SIZE
+				remainBytes -= BLOCK_SIZE
+			} else {
+				bzero(buf)
+				copy(buf.data[:remainBytes], newData[editedBytes:editedBytes+remainBytes])
+				editedBytes += remainBytes
+				remainBytes = 0
+				// release node data
+				ifEnd = false
+			}
+			brelse(buf)
+		} else {
+			bfree(buf)
+		}
+	}
+	oldSize := node.dinodeData.Size
+	// 如果没有完成，iappend 会妥善修改内容
+	node.dinodeData.Size = editedBytes
+
+	// 内容过剩，处理NLink
+	currentUsed := editedBytes / BLOCK_SIZE
+	if editedBytes%BLOCK_SIZE != 0 {
+		currentUsed++
+	}
+	oldUsed := oldSize / BLOCK_SIZE
+	if oldSize%BLOCK_SIZE != 0 {
+		oldSize++
+	}
+
+	if !ifEnd {
+		// 使用
+		if currentUsed < NDIRECT {
+			node.dinodeData.Nlink = uint16(currentUsed)
+		} else {
+			node.dinodeData.Nlink = NDIRECT
+		}
+		// 没有结束，添加内容
+		if remainBytes > 0 {
+			IAppend(node, newData[editedBytes:])
+		}
+	} else {
+		// 使用
+		node.dinodeData.Nlink = uint16(currentUsed)
+		if currentUsed >= NDIRECT {
+			var secondUsed = int(currentUsed - NDIRECT)
+			buf := bget(uint16(node.dinodeData.Addrs[NDIRECT]))
+			intSize := int(unsafe.Sizeof(uint32(0)))
+			var secnt int
+			var nodeNum uint32
+			for secnt < int(oldUsed-currentUsed) {
+				readObject(buf.data[intSize*(secondUsed+secnt):intSize*(secondUsed+secnt+1)], &nodeNum)
+				// 释放多余的块
+				bfree(bget(uint16(nodeNum)))
+				secnt++
+			}
+			copy(buf.data[intSize*secondUsed:], zeroBuf[intSize*secondUsed:])
+		} else {
+			// 初始化 ADDRS 字段
+			node.dinodeData.Nlink = uint16(currentUsed)
+			for i := range node.dinodeData.Addrs {
+				if i > int(node.dinodeData.Nlink) {
+					node.dinodeData.Addrs[i] = 0
+				}
+			}
+		}
+	}
+	fsyncINode(node)
+}
+```
+
+
+
