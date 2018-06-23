@@ -134,31 +134,7 @@
         name: 'file-group',
         created: function() {
             let vm = this
-            console.log(this.file_list)
-            axios.get('/dirs').then(
-
-                // https://stackoverflow.com/questions/47549891/vue-js-cannot-read-property-push-of-undefined
-                (response) => {
-                    for (let msg_data of response.data) {
-                        if (msg_data.file_name !== '.' && msg_data.file_name !== '..') {
-                            let f_type;
-                            if (msg_data.file_type === 'DIRECT') {
-                                f_type = 'dict'
-                            } else {
-                                f_type = 'file'
-                            }
-                            vm.file_list.push({
-                                fileName: msg_data.file_name,
-                                fileType: f_type,
-                                fileINum: msg_data.i_num,
-                            })
-                        }
-
-                    }
-                }
-            ).catch(function (error) {
-                console.log(error);
-            })
+            this.$root.ls()
         }
     })
 
@@ -273,14 +249,16 @@
                         { title: '创建文件' , func: ()=>{this.create_file = true}},
                         { title: '创建目录' , func: ()=>{this.create_dir = true}},
                         { title: '返回上一级目录' , func: ()=>{
-                                axios.get("/cd/..").then(
-                                        (response) => {
+                            // https://stackoverflow.com/questions/6777274/can-urls-contain-dots-in-the-path-part
+                            // how to pass .. to it..
+                            axios.get("/cd/").then(
+                                        () => {
                                             // console.log("success switch, ", this.$root.choosen.fileName)
-
-                                            this.$root.currentDir = this.$root.choosen.fileName
+                                            // this.$root.currentDir = response.data.current
+                                            console.log("返回上一级目录")
                                             this.$root.choosen = null
                                             this.$root.current_file_lists = this.$root.current_file_lists.slice(0,0)
-
+                                            this.$root.ls()
                                         }
                                 ).catch(
                                         (error) => {
@@ -338,9 +316,9 @@
                                     (response) => {
                                         console.log("success switch, ", this.$root.choosen.fileName)
 
-                                        this.$root.currentDir = this.$root.choosen.fileName
+                                        // this.$root.currentDir = response.data.current
                                         this.$root.choosen = null
-                                        this.$root.current_file_lists = this.$root.current_file_lists.slice(0,0)
+                                        this.$root.ls()
 
                                     }
                                 ).catch(
@@ -356,22 +334,7 @@
         },
         methods: {
             createD:  function(event) {
-                axios.post("/dirs/" + this.create_dir_name).then(
-                    (response) => {
-                        this.$root.current_file_lists.push({
-                            fileName: this.create_dir_name,
-                            fileType: 'dict',
-                            fileINum: response.data.i_num,
-                        })
-                        this.create_dir_name = ''
-                    }
-                ).catch(
-                    (error) => {
-                        console.log(error)
-                        this.create_dir_name = ''
-                    }
-
-                )
+                this.$root.ls()
                 this.create_dir = false
                 // TODO: 尖头函数，function 区别
             }, createF: function() {
@@ -480,7 +443,7 @@
         }
     })
 
-    new Vue({
+    var app = new Vue({
         el: '#app',
         data: () => ({
             drawer: true,
@@ -492,7 +455,31 @@
         props: {
             source: String
         },
-
+        methods: {
+            ls: function () {
+                axios.get('/dirs').then(
+                    (response) => {
+                        this.currentDir = response.data.current
+                        this.current_file_lists = this.current_file_lists.slice(0, 0)
+                        for (let msg_data of response.data.data) {
+                            if (msg_data.file_name !== '.' && msg_data.file_name !== '..') {
+                                let f_type;
+                                if (msg_data.file_type === 'DIRECT') {
+                                    f_type = 'dict'
+                                } else {
+                                    f_type = 'file'
+                                }
+                                this.current_file_lists.push({
+                                    fileName: msg_data.file_name,
+                                    fileType: f_type,
+                                    fileINum: msg_data.i_num,
+                                })
+                            }
+                        }
+                    }
+                ).catch((reason => console.log(reason)))
+            },
+        }
     })
 
 </script>

@@ -21,6 +21,11 @@ func main() {
 	r := gin.Default()
 	mapleFS.InitServe()
 	var rootDir mapleFS.INode
+
+	// 名称stack
+	dirNameStack := make([]string, 0)
+	dirNameStack = append(dirNameStack, "root")
+
 	mapleFS.ReadRoot(&rootDir)
 	currentDir := &rootDir
 
@@ -67,6 +72,7 @@ func main() {
 		return true, iNum
 	}
 
+	// serve index page
 	r.StaticFile("/index", "template/frontPage.html")
 	r.StaticFile("", "template/frontPage.html")
 
@@ -83,7 +89,11 @@ func main() {
 			})
 		}
 
-		context.JSON(200, fileDatas)
+		logrus.Info("pwd get: ", strings.Join(dirNameStack, "/"))
+		context.JSON(200, map[string]interface{}{
+			"data":    fileDatas,
+			"current": strings.Join(dirNameStack, "/"),
+		})
 	})
 
 	// read concrete file, like cat
@@ -102,13 +112,32 @@ func main() {
 	})
 
 	// cd
-	r.GET("/cd/:name", func(context *gin.Context) {
-		exists, iNum := checkNameUnExists(context)
-
-		if !exists {
-			return
+	r.GET("/cd/*name", func(context *gin.Context) {
+		name := context.Param("name")
+		if len(name) > 0 && name[0] == '/' {
+			name = name[1:]
+		}
+		if strings.Compare(name, "") == 0 {
+			if len(dirNameStack) != 1 {
+				dirNameStack = dirNameStack[:len(dirNameStack)-1]
+			}
+			currentDir = mapleFS.IGet(mapleFS.Dirlookup(currentDir, []byte("..")))
+			context.JSON(204, nil)
 		} else {
-
+			iNum := mapleFS.Dirlookup(currentDir, []byte(name))
+			if iNum == -1 {
+				context.JSON(404, map[string]string{
+					"error": "file " + name + " not exist in dir " + dirNameStack[len(dirNameStack)-1],
+				})
+				return
+			}
+			if name == ".." {
+				if len(dirNameStack) != 1 {
+					dirNameStack = dirNameStack[:len(dirNameStack)-1]
+				}
+			} else {
+				dirNameStack = append(dirNameStack, name)
+			}
 			currentDir = mapleFS.IGet(iNum)
 
 			context.JSON(204, nil)

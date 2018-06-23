@@ -155,7 +155,7 @@ func WalkDir(dir *INode) []*Dirent {
 
 			log.Debug("From ", j*STRUCT_SIZE, " to ", (j+1)*STRUCT_SIZE)
 			readObject(buf.data[j*STRUCT_SIZE:(j+1)*STRUCT_SIZE], &curDir)
-			log.Info("Find dir: ", curDir.String())
+			log.Debug("Find dir: ", curDir.String())
 			if curDir.INum == 0 && bytes.Compare(curDir.Name[:1], []byte(".")) != 0 && bytes.Compare(curDir.Name[:2], []byte("..")) != 0 {
 				// 废节点
 				log.Info("abandon:", string(curDir.Name[:]), " cmp1:", bytes.Compare(curDir.Name[:1], []byte(".")), ", cmp2:", bytes.Compare(curDir.Name[:2], []byte("..")))
