@@ -19,6 +19,7 @@ type FileSchema struct {
 
 func main() {
 	r := gin.Default()
+	gin.SetMode(gin.ReleaseMode)
 	mapleFS.InitServe()
 	var rootDir mapleFS.INode
 

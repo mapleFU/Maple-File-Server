@@ -14,6 +14,20 @@
 
 ## 基本的操作和使用
 
+切换到 `TongjiFileLab` 目录下，运行 `mkfs`, 来生成文件系统的镜像：
+
+```bash
+cd TongjiFileLab/
+./mkfs
+```
+
+再运行服务器进程：
+
+```bash
+export GIN_MODE=release 
+./main # 在 0.0.0.0:8080 运行
+```
+
 系统基本的使用可以在`web` 服务器上进行，访问可以得到页面：
 
 ![基础界面2](./doc/基础界面2.png)
@@ -441,3 +455,25 @@ func IModify(node *INode, newData []byte) {
 
 
 
+## api系统接口
+
+运行 `main` 可以打开文件系统的 `api` 访问文件系统的接口，与前端交互，以下是 对应的接口：
+
+| 方法   | url          | 语义                       |
+| ------ | ------------ | -------------------------- |
+| GET    | /dirs        | 获得当前目录所有的文件信息 |
+| GET    | /files/:name | 获得所访问的文件的内容     |
+| GET    | /cd/*name    | 切换当前目录               |
+| POST   | /dirs/:name  | 在目录添加文件             |
+| DELETE | /files/:name | 删除对应文件               |
+| DELETE | /dirs/:name  | 删除对应目录               |
+| POST   | /files/:name | 创建对应文件               |
+| PUT    | /files/:name | 修改文件内容               |
+
+
+
+## 命令行接口
+
+`cmd` 包的 `main` 是程序的命令行接口，你可以使用 `help` 来获得提示，访问同一个文件系统。
+
+这里实现了 `ls` `mkdir` `mkfile` `cd` `rmdir`等命令.
